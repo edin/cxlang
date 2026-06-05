@@ -40,16 +40,254 @@ internal static class GenericSpecializationPass
             }
         }
 
+        var concreteStructs = SpecializeStructs(program, specializations.Values);
+
         RetargetResolvedGenericCalls(program, specializations);
-        if (specializations.Count == 0)
+        if (specializations.Count == 0 && concreteStructs.Count == 0)
         {
             return program;
         }
 
         return program with
         {
+            Structs = program.Structs.Concat(concreteStructs).ToList(),
             Functions = program.Functions.Concat(specializations.Values).ToList(),
         };
+    }
+
+    private static IReadOnlyList<StructNode> SpecializeStructs(
+        ProgramNode program,
+        IEnumerable<FunctionNode> specializedFunctions)
+    {
+        var genericDefinitions = program.Structs
+            .Where(structNode => !structNode.IsHeaderDeclaration)
+            .Where(structNode => structNode.TypeParameters.Count > 0)
+            .ToDictionary(structNode => structNode.Name, StringComparer.Ordinal);
+        if (genericDefinitions.Count == 0)
+        {
+            return [];
+        }
+
+        var concreteStructs = program.Structs
+            .Where(structNode => !structNode.IsHeaderDeclaration)
+            .Where(structNode => structNode.TypeParameters.Count == 0)
+            .ToDictionary(structNode => structNode.Name, StringComparer.Ordinal);
+        var emitted = new HashSet<string>(concreteStructs.Keys, StringComparer.Ordinal);
+        var pending = new Queue<GenericStructUse>();
+
+        void CollectFromType(string? type)
+        {
+            if (string.IsNullOrWhiteSpace(type))
+            {
+                return;
+            }
+
+            foreach (var use in FindGenericStructUses(type))
+            {
+                if (genericDefinitions.ContainsKey(use.Name))
+                {
+                    pending.Enqueue(use);
+                }
+            }
+        }
+
+        foreach (var typeAlias in program.TypeAliases)
+        {
+            CollectFromType(typeAlias.TargetType);
+        }
+
+        foreach (var adapter in program.TypeAdapters)
+        {
+            if (!adapter.TypeParameters.Any(parameter => Regex.IsMatch(adapter.BaseType, $@"\b{Regex.Escape(parameter)}\b")))
+            {
+                CollectFromType(adapter.BaseType);
+            }
+        }
+
+        foreach (var externFunction in program.ExternFunctions)
+        {
+            CollectFromType(externFunction.ReturnType);
+            foreach (var parameter in externFunction.Parameters.Where(parameter => !parameter.IsVariadic))
+            {
+                CollectFromType(parameter.Type);
+            }
+        }
+
+        foreach (var structNode in program.Structs.Where(structNode => structNode.TypeParameters.Count == 0))
+        {
+            foreach (var field in structNode.Fields)
+            {
+                CollectFromType(field.Type);
+            }
+        }
+
+        foreach (var taggedUnion in program.TaggedUnions)
+        {
+            foreach (var variant in taggedUnion.Variants)
+            {
+                CollectFromType(variant.Type);
+            }
+        }
+
+        foreach (var global in program.GlobalVariables)
+        {
+            CollectFromType(global.Type);
+        }
+
+        foreach (var function in program.Functions.Concat(specializedFunctions))
+        {
+            CollectFromFunction(function, CollectFromType);
+        }
+
+        var result = new List<StructNode>();
+        while (pending.TryDequeue(out var use))
+        {
+            var concreteName = LowerGenericTypeName(use.Name, use.Arguments);
+            if (!emitted.Add(concreteName)
+                || !genericDefinitions.TryGetValue(use.Name, out var definition)
+                || definition.TypeParameters.Count != use.Arguments.Count)
+            {
+                continue;
+            }
+
+            var substitutions = definition.TypeParameters
+                .Zip(use.Arguments)
+                .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
+            var fields = definition.Fields
+                .Select(field =>
+                {
+                    var fieldType = SubstituteGenericType(field.Type, substitutions);
+                    CollectFromType(fieldType);
+                    return new StructFieldNode(field.Location, field.Name, fieldType, field.Attributes);
+                })
+                .ToList();
+            var requirements = definition.Requirements
+                .Select(requirement => new StructRequirementNode(
+                    requirement.Location,
+                    requirement.Name,
+                    requirement.TypeArguments
+                        .Select(argument => SubstituteGenericType(argument, substitutions))
+                        .ToList()))
+                .ToList();
+            var specialized = new StructNode(
+                definition.Location,
+                concreteName,
+                [],
+                [],
+                requirements,
+                fields,
+                [],
+                definition.Attributes);
+            specialized.Semantic.ModuleName = definition.Semantic.ModuleName;
+            result.Add(specialized);
+        }
+
+        return result;
+    }
+
+    private static void CollectFromFunction(FunctionNode function, Action<string?> collectFromType)
+    {
+        collectFromType(function.ReturnType);
+        foreach (var parameter in function.Parameters.Where(parameter => !parameter.IsVariadic))
+        {
+            collectFromType(parameter.Type);
+        }
+
+        foreach (var statement in function.Body)
+        {
+            CollectFromStatement(statement, collectFromType);
+        }
+    }
+
+    private static void CollectFromStatement(StatementNode statement, Action<string?> collectFromType)
+    {
+        switch (statement)
+        {
+            case LetStatement let:
+                collectFromType(let.Type);
+                break;
+            case IfStatement ifStatement:
+                foreach (var nested in ifStatement.ThenBody)
+                {
+                    CollectFromStatement(nested, collectFromType);
+                }
+
+                if (ifStatement.ElseBranch is not null)
+                {
+                    CollectFromStatement(ifStatement.ElseBranch, collectFromType);
+                }
+
+                break;
+            case ElseBlockStatement elseBlock:
+                foreach (var nested in elseBlock.Body)
+                {
+                    CollectFromStatement(nested, collectFromType);
+                }
+
+                break;
+            case WhileStatement whileStatement:
+                foreach (var nested in whileStatement.Body)
+                {
+                    CollectFromStatement(nested, collectFromType);
+                }
+
+                break;
+            case ForStatement forStatement:
+                if (forStatement.Initializer is ForDeclarationInitializerNode declaration)
+                {
+                    collectFromType(declaration.Type);
+                }
+
+                foreach (var nested in forStatement.Body)
+                {
+                    CollectFromStatement(nested, collectFromType);
+                }
+
+                break;
+            case ForeachStatement foreachStatement:
+                collectFromType(foreachStatement.ValueBinding.Type);
+                if (foreachStatement.IndexBinding is not null)
+                {
+                    collectFromType(foreachStatement.IndexBinding.Type);
+                }
+
+                if (foreachStatement.KeyBinding is not null)
+                {
+                    collectFromType(foreachStatement.KeyBinding.Type);
+                }
+
+                foreach (var nested in foreachStatement.Body)
+                {
+                    CollectFromStatement(nested, collectFromType);
+                }
+
+                break;
+            case SwitchStatement switchStatement:
+                foreach (var switchCase in switchStatement.Cases)
+                {
+                    foreach (var nested in switchCase.Body)
+                    {
+                        CollectFromStatement(nested, collectFromType);
+                    }
+                }
+
+                foreach (var nested in switchStatement.DefaultBody)
+                {
+                    CollectFromStatement(nested, collectFromType);
+                }
+
+                break;
+            case MatchStatement matchStatement:
+                foreach (var arm in matchStatement.Arms)
+                {
+                    foreach (var nested in arm.Body)
+                    {
+                        CollectFromStatement(nested, collectFromType);
+                    }
+                }
+
+                break;
+        }
     }
 
     private static void EnqueueResolvedUse(ExpressionNode expression, Queue<GenericFunctionUse> pending)
@@ -483,8 +721,140 @@ internal static class GenericSpecializationPass
         return type;
     }
 
+    private static IReadOnlyList<GenericStructUse> FindGenericStructUses(string type)
+    {
+        var uses = new List<GenericStructUse>();
+
+        for (var i = 0; i < type.Length; i++)
+        {
+            if (!IsIdentifierStart(type[i]))
+            {
+                continue;
+            }
+
+            var nameStart = i;
+            while (i < type.Length && IsIdentifierPart(type[i]))
+            {
+                i++;
+            }
+
+            if (i >= type.Length || type[i] != '<')
+            {
+                continue;
+            }
+
+            var close = FindMatchingGenericClose(type, i);
+            if (close < 0)
+            {
+                continue;
+            }
+
+            var name = type[nameStart..i];
+            var arguments = SplitGenericArguments(type[(i + 1)..close]);
+            uses.Add(new GenericStructUse(name, arguments));
+
+            foreach (var argument in arguments)
+            {
+                uses.AddRange(FindGenericStructUses(argument));
+            }
+
+            i = close;
+        }
+
+        return uses;
+    }
+
+    private static string LowerGenericTypeName(string name, IReadOnlyList<string> arguments) =>
+        SanitizeTypeName($"{name}_{string.Join("_", arguments.Select(LowerTypeName))}");
+
+    private static string LowerTypeName(string type)
+    {
+        type = type.Trim();
+        foreach (var use in FindGenericStructUses(type).OrderByDescending(use => $"{use.Name}<".Length + string.Join(",", use.Arguments).Length))
+        {
+            var source = $"{use.Name}<{string.Join(",", use.Arguments)}>";
+            type = type.Replace(source, LowerGenericTypeName(use.Name, use.Arguments), StringComparison.Ordinal);
+        }
+
+        return SanitizeTypeName(type
+            .Replace("const ", "const_", StringComparison.Ordinal)
+            .Replace("*", "_ptr", StringComparison.Ordinal)
+            .Replace(" ", "_", StringComparison.Ordinal));
+    }
+
+    private static string SanitizeTypeName(string type) =>
+        Regex.Replace(type, "[^A-Za-z0-9_]", "_");
+
+    private static int FindMatchingGenericClose(string type, int openIndex)
+    {
+        var depth = 0;
+        for (var i = openIndex; i < type.Length; i++)
+        {
+            if (type[i] == '<')
+            {
+                depth++;
+            }
+            else if (type[i] == '>')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return i;
+                }
+            }
+        }
+
+        return -1;
+    }
+
+    private static IReadOnlyList<string> SplitGenericArguments(string argumentsText)
+    {
+        if (string.IsNullOrWhiteSpace(argumentsText))
+        {
+            return [];
+        }
+
+        var arguments = new List<string>();
+        var start = 0;
+        var angleDepth = 0;
+        var parenDepth = 0;
+        var bracketDepth = 0;
+
+        for (var i = 0; i < argumentsText.Length; i++)
+        {
+            switch (argumentsText[i])
+            {
+                case '<': angleDepth++; break;
+                case '>': angleDepth--; break;
+                case '(': parenDepth++; break;
+                case ')': parenDepth--; break;
+                case '[': bracketDepth++; break;
+                case ']': bracketDepth--; break;
+            }
+
+            if (argumentsText[i] != ',' || angleDepth != 0 || parenDepth != 0 || bracketDepth != 0)
+            {
+                continue;
+            }
+
+            arguments.Add(argumentsText[start..i].Trim());
+            start = i + 1;
+        }
+
+        arguments.Add(argumentsText[start..].Trim());
+        return arguments;
+    }
+
+    private static bool IsIdentifierStart(char ch) =>
+        char.IsLetter(ch) || ch == '_';
+
+    private static bool IsIdentifierPart(char ch) =>
+        char.IsLetterOrDigit(ch) || ch == '_';
+
     private static string Key(FunctionNode function, IReadOnlyList<string> arguments) =>
         $"{(function.OwnerType is null ? function.Name : $"{function.OwnerType}.{function.Name}")}<{string.Join(",", arguments)}>";
+
+    private sealed record GenericStructUse(string Name, IReadOnlyList<string> Arguments);
 
     private sealed record GenericFunctionUse(FunctionNode Function, IReadOnlyList<string> TypeArguments);
 }

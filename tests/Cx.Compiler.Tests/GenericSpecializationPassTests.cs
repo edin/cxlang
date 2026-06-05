@@ -44,4 +44,36 @@ public sealed class GenericSpecializationPassTests
         Assert.Same(identity, call.Semantic.ResolvedCall?.Function);
         Assert.DoesNotContain(lowered.Functions, function => function.Name == "unused" && function.TypeArguments.Count > 0);
     }
+
+    [Fact]
+    public void Apply_AddsConcreteStructForUsedGenericStruct()
+    {
+        var program = CompilerTestHelpers.Parse(
+            """
+            struct Box<T> {
+                value: T;
+            }
+
+            struct Unused<T> {
+                value: T;
+            }
+
+            fn main() -> int {
+                let box: Box<int> = Box<int> { value: 10 };
+                return box.value;
+            }
+            """);
+        CompilerTestHelpers.Resolve(program);
+
+        var diagnostics = new DiagnosticBag();
+        var lowered = GenericSpecializationPass.Apply(program, diagnostics);
+        CompilerTestHelpers.AssertNoErrors(diagnostics);
+
+        var box = Assert.Single(lowered.Structs, structNode => structNode.Name == "Box_int");
+        var field = Assert.Single(box.Fields);
+
+        Assert.Equal("value", field.Name);
+        Assert.Equal("int", field.Type);
+        Assert.DoesNotContain(lowered.Structs, structNode => structNode.Name == "Unused_int");
+    }
 }

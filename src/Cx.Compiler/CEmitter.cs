@@ -2517,7 +2517,9 @@ public sealed class CEmitter
             .Where(structNode => !structNode.IsHeaderDeclaration)
             .Where(structNode => structNode.TypeParameters.Count == 0)
             .ToList();
-        var emittedGenericNames = new HashSet<string>(StringComparer.Ordinal);
+        var emittedGenericNames = structs
+            .Select(structNode => structNode.Name)
+            .ToHashSet(StringComparer.Ordinal);
         var pending = new Queue<GenericStructUse>();
         var requirementMatcher = new RequirementMatcher(program);
 
