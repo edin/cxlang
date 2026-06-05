@@ -1,0 +1,21 @@
+struct Counter {
+    value: int;
+}
+
+fn Counter.reset(self: Self*) -> void {
+    self.value = 0;
+}
+
+fn Counter.copy(self: Self*) -> Self {
+    let other: Self;
+    other.value = self.value;
+    return other;
+}
+
+fn main() -> int {
+    let counter: Counter;
+    counter.value = 5;
+    let copied: Counter = counter.copy();
+    counter.reset();
+    return copied.value - 5 + counter.value;
+}

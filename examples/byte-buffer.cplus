@@ -1,0 +1,19 @@
+fn main() -> int {
+    let buffer: ByteBuffer = ByteBuffer.with_capacity(2);
+    buffer.write_u8((u8)10);
+    buffer.write_u8((u8)20);
+
+    let extra_data: u8[3] = { 30, 40, 50 };
+    buffer.write_bytes(&extra_data[0], 3);
+
+    let view: Slice<u8> = buffer.as_slice();
+    let total: int = (int)view.data[0]
+        + (int)view.data[1]
+        + (int)view.data[2]
+        + (int)view.data[3]
+        + (int)view.data[4]
+        + (int)view.length;
+
+    buffer.free();
+    return total - 155;
+}

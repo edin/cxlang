@@ -1,0 +1,126 @@
+module std.core;
+
+struct Result<T, E> {
+    has_value: bool;
+    ok: bool;
+    value: T;
+    error: E;
+}
+
+extension Result<T, E> {
+    static fn ok(value: T) -> Result<T, E> {
+        let result: Result<T, E>;
+        result.has_value = true;
+        result.ok = true;
+        result.value = value;
+        return result;
+    }
+
+    static fn err(error: E) -> Result<T, E> {
+        let result: Result<T, E>;
+        result.has_value = true;
+        result.ok = false;
+        result.error = error;
+        return result;
+    }
+
+    fn is_ok() -> bool {
+        return self.has_value && self.ok;
+    }
+
+    fn is_error() -> bool {
+        return self.has_value && !self.ok;
+    }
+
+    fn ok_ptr() -> T* {
+        if (!self.is_ok()) {
+            return null;
+        }
+
+        return &self.value;
+    }
+
+    fn error_ptr() -> E* {
+        if (!self.is_error()) {
+            return null;
+        }
+
+        return &self.error;
+    }
+
+    fn unwrap_or(fallback: T) -> T {
+        if (self.is_ok()) {
+            return self.value;
+        }
+
+        return fallback;
+    }
+
+    fn error_or(fallback: E) -> E {
+        if (self.is_error()) {
+            return self.error;
+        }
+
+        return fallback;
+    }
+}
+
+extension Result<T, E>
+where T: Disposable<T> {
+    fn free() -> void {
+        if (!self.has_value) {
+            return;
+        }
+
+        if (self.ok) {
+            let value: T = self.value;
+            value.free();
+        }
+
+        self.has_value = false;
+    }
+}
+
+test "result ok and error" {
+    let ok: Result<int, int> = Result.ok<int, int>(42);
+    expect(ok.is_ok());
+    expect(!ok.is_error());
+    expect(ok.unwrap_or(0) == 42);
+    expect(ok.error_or(7) == 7);
+
+    let err: Result<int, int> = Result.err<int, int>(9);
+    expect(err.is_error());
+    expect(!err.is_ok());
+    expect(err.unwrap_or(3) == 3);
+    expect(err.error_or(0) == 9);
+}
+
+test "result pointer access" {
+    let ok: Result<int, int> = Result.ok<int, int>(5);
+    let ok_value: int* = ok.ok_ptr();
+    expect(ok_value != null);
+    expect(*ok_value == 5);
+    expect(ok.error_ptr() == null);
+
+    let err: Result<int, int> = Result.err<int, int>(11);
+    let error_value: int* = err.error_ptr();
+    expect(error_value != null);
+    expect(*error_value == 11);
+    expect(err.ok_ptr() == null);
+}
+
+test "result frees disposable success value" {
+    let buffer: ByteBuffer = ByteBuffer.with_capacity((usize)4);
+    expect_not_null(buffer.data);
+
+    let result: Result<ByteBuffer, int> = Result.ok<ByteBuffer, int>(buffer);
+    result.free();
+    expect_false(result.has_value);
+}
+
+test "result clears disposable error state" {
+    let result: Result<ByteBuffer, int> = Result.err<ByteBuffer, int>(7);
+    expect_true(result.is_error());
+    result.free();
+    expect_false(result.has_value);
+}

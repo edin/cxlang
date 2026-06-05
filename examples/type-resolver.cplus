@@ -1,0 +1,18 @@
+import c.stdio;
+
+struct Counter {
+    value: int;
+
+    static fn create(value: int) -> Counter {
+        return Counter { value: value };
+    }
+}
+
+fn main() -> int {
+    let left: Counter = Counter.create(1);
+    let right: Counter = Counter.create(2);
+    let cmp: int = left.value <=> right.value;
+    printf("cmp=%d\n", cmp);
+    printf("inline=%d\n", left.value <=> right.value);
+    return 0;
+}

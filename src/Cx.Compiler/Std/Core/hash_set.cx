@@ -1,0 +1,306 @@
+module std.core;
+
+struct HashSet<T> where T: Hash<T> + Equal<T> {
+    values: T*;
+    hashes: u64*;
+    states: u8*;
+    length: usize;
+    capacity: usize;
+    allocator: Allocator*;
+}
+
+struct HashSetIterator<T>: Iterator<T> {
+    set: HashSet<T>*;
+    index: usize;
+}
+
+extension HashSetIterator<T> {
+    fn next() -> bool {
+        let set: HashSet<T>* = self.set;
+        while (self.index < set.capacity) {
+            if (set.states[self.index] == 1) {
+                self.index += 1;
+                return true;
+            }
+
+            self.index += 1;
+        }
+
+        return false;
+    }
+
+    fn value() -> T* {
+        let set: HashSet<T>* = self.set;
+        return &set.values[self.index - 1];
+    }
+}
+
+extension HashSet<T> {
+    static fn create() -> HashSet<T> {
+        return HashSet<T>.with_capacity(0);
+    }
+
+    static fn with_capacity(capacity: usize) -> HashSet<T> {
+        return HashSet<T>.with_allocator(Allocator.default(), capacity);
+    }
+
+    static fn with_allocator(allocator: Allocator*, capacity: usize) -> HashSet<T> {
+        let set: HashSet<T>;
+        set.values = null;
+        set.hashes = null;
+        set.states = null;
+        set.length = 0;
+        set.capacity = 0;
+        set.allocator = allocator;
+
+        if (capacity > 0) {
+            set.reserve(capacity);
+        }
+
+        return set;
+    }
+
+    fn free() -> void {
+        if (self.values != null) {
+            self.allocator.free_bytes(self.values, self.capacity * sizeof(T));
+        }
+        if (self.hashes != null) {
+            self.allocator.free_bytes(self.hashes, self.capacity * sizeof(u64));
+        }
+        if (self.states != null) {
+            self.allocator.free_bytes(self.states, self.capacity * sizeof(u8));
+        }
+
+        self.values = null;
+        self.hashes = null;
+        self.states = null;
+        self.length = 0;
+        self.capacity = 0;
+        self.allocator = Allocator.default();
+    }
+
+    fn clear() -> void {
+        let i: usize = 0;
+        while (i < self.capacity) {
+            self.states[i] = 0;
+            i += 1;
+        }
+
+        self.length = 0;
+    }
+
+    fn is_empty() -> bool {
+        return self.length == 0;
+    }
+
+    fn iterator() -> HashSetIterator<T> {
+        let iterator: HashSetIterator<T>;
+        iterator.set = self;
+        iterator.index = 0;
+        return iterator;
+    }
+
+    fn find_slot(value: T, value_hash: u64, found: bool*) -> usize {
+        *found = false;
+        if (self.capacity == 0) {
+            return 0;
+        }
+
+        let first_deleted: usize = self.capacity;
+        let index: usize = (usize)(value_hash % self.capacity);
+        let scanned: usize = 0;
+
+        while (scanned < self.capacity) {
+            let state: u8 = self.states[index];
+            if (state == 0) {
+                if (first_deleted != self.capacity) {
+                    return first_deleted;
+                }
+
+                return index;
+            }
+
+            if (state == 2) {
+                if (first_deleted == self.capacity) {
+                    first_deleted = index;
+                }
+            }
+            else if (self.hashes[index] == value_hash && T.equals(self.values[index], value)) {
+                *found = true;
+                return index;
+            }
+
+            index = (index + 1) % self.capacity;
+            scanned += 1;
+        }
+
+        if (first_deleted != self.capacity) {
+            return first_deleted;
+        }
+
+        return self.capacity;
+    }
+
+    fn insert_existing(value: T, value_hash: u64) -> bool {
+        let found: bool = false;
+        let slot: usize = self.find_slot<T>(value, value_hash, &found);
+        if (slot >= self.capacity) {
+            return false;
+        }
+
+        if (!found) {
+            self.values[slot] = value;
+            self.hashes[slot] = value_hash;
+            self.states[slot] = 1;
+            self.length += 1;
+        }
+
+        return true;
+    }
+
+    fn reserve(capacity: usize) -> bool {
+        if (capacity <= self.capacity) {
+            return true;
+        }
+
+        let old_values: T* = self.values;
+        let old_hashes: u64* = self.hashes;
+        let old_states: u8* = self.states;
+        let old_capacity: usize = self.capacity;
+
+        let new_values: T* = (T*)self.allocator.allocate_bytes(capacity * sizeof(T));
+        let new_hashes: u64* = (u64*)self.allocator.allocate_bytes(capacity * sizeof(u64));
+        let new_states: u8* = (u8*)self.allocator.allocate_bytes(capacity * sizeof(u8));
+        if (new_values == null || new_hashes == null || new_states == null) {
+            if (new_values != null) {
+                self.allocator.free_bytes(new_values, capacity * sizeof(T));
+            }
+            if (new_hashes != null) {
+                self.allocator.free_bytes(new_hashes, capacity * sizeof(u64));
+            }
+            if (new_states != null) {
+                self.allocator.free_bytes(new_states, capacity * sizeof(u8));
+            }
+
+            return false;
+        }
+
+        self.values = new_values;
+        self.hashes = new_hashes;
+        self.states = new_states;
+        self.capacity = capacity;
+        self.length = 0;
+
+        let i: usize = 0;
+        while (i < self.capacity) {
+            self.states[i] = 0;
+            i += 1;
+        }
+
+        i = 0;
+        while (i < old_capacity) {
+            if (old_states[i] == 1) {
+                self.insert_existing<T>(old_values[i], old_hashes[i]);
+            }
+            i += 1;
+        }
+
+        if (old_values != null) {
+            self.allocator.free_bytes(old_values, old_capacity * sizeof(T));
+        }
+        if (old_hashes != null) {
+            self.allocator.free_bytes(old_hashes, old_capacity * sizeof(u64));
+        }
+        if (old_states != null) {
+            self.allocator.free_bytes(old_states, old_capacity * sizeof(u8));
+        }
+
+        return true;
+    }
+
+    fn add(value: T) -> bool {
+        if (self.capacity == 0 || ((self.length + 1) * 100) >= (self.capacity * 70)) {
+            let new_capacity: usize = 8;
+            if (self.capacity > 0) {
+                new_capacity = self.capacity * 2;
+            }
+
+            if (!self.reserve(new_capacity)) {
+                return false;
+            }
+        }
+
+        return self.insert_existing<T>(value, T.hash(value));
+    }
+
+    fn contains(value: T) -> bool {
+        let found: bool = false;
+        self.find_slot<T>(value, T.hash(value), &found);
+        return found;
+    }
+
+    fn remove(value: T) -> bool {
+        let found: bool = false;
+        let slot: usize = self.find_slot<T>(value, T.hash(value), &found);
+        if (!found) {
+            return false;
+        }
+
+        self.states[slot] = 2;
+        self.length -= 1;
+        return true;
+    }
+}
+
+test "hash set add contains and remove" {
+    let set: HashSet<int> = HashSet<int>.with_capacity(4);
+    expect_true(set.is_empty());
+
+    expect_true(set.add(10));
+    expect_true(set.add(20));
+    expect_true(set.add(10));
+    expect_eq_usize((usize)2, set.length);
+    expect_true(set.contains(10));
+    expect_true(set.contains(20));
+    expect_false(set.contains(30));
+
+    expect_true(set.remove(10));
+    expect_false(set.contains(10));
+    expect_eq_usize((usize)1, set.length);
+    expect_false(set.remove(10));
+
+    set.free();
+}
+
+test "hash set grows and iterates" {
+    let set: HashSet<int> = HashSet<int>.with_capacity(1);
+    let i: int = 1;
+    while (i <= 12) {
+        expect_true(set.add(i));
+        i += 1;
+    }
+
+    expect_eq_usize((usize)12, set.length);
+    expect(set.capacity >= 12);
+
+    let total: int = 0;
+    foreach value in set {
+        total += value;
+    }
+
+    expect_eq_int(78, total);
+    set.free();
+}
+
+test "hash set string view keys" {
+    let set: HashSet<StringView> = HashSet<StringView>.create();
+    expect_true(set.add(StringView.from_cstr("/")));
+    expect_true(set.add(StringView.from_cstr("/health")));
+    expect_true(set.add(StringView.from_cstr("/health")));
+    expect_eq_usize((usize)2, set.length);
+    expect_true(set.contains(StringView.from_cstr("/health")));
+    expect_true(set.remove(StringView.from_cstr("/")));
+    expect_false(set.contains(StringView.from_cstr("/")));
+
+    set.free();
+}

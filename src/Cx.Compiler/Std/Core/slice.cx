@@ -1,0 +1,11 @@
+module std.core;
+
+struct Slice<T>: Contiguous<T> {
+    data: T*;
+    length: usize;
+}
+
+struct Range<T>: ContiguousRange<T> {
+    start: T*;
+    end: T*;
+}

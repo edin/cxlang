@@ -1,0 +1,87 @@
+module std.core;
+
+struct Option<T> {
+    has_value: bool;
+    value: T;
+}
+
+extension Option<T> {
+    static fn none() -> Option<T> {
+        let option: Option<T>;
+        option.has_value = false;
+        return option;
+    }
+
+    static fn some(value: T) -> Option<T> {
+        let option: Option<T>;
+        option.has_value = true;
+        option.value = value;
+        return option;
+    }
+
+    fn is_some() -> bool {
+        return self.has_value;
+    }
+
+    fn is_none() -> bool {
+        return !self.has_value;
+    }
+
+    fn as_ptr() -> T* {
+        if (!self.has_value) {
+            return null;
+        }
+
+        return &self.value;
+    }
+
+    fn unwrap_or(fallback: T) -> T {
+        if (self.has_value) {
+            return self.value;
+        }
+
+        return fallback;
+    }
+}
+
+extension Option<T>
+where T: Disposable<T> {
+    fn free() -> void {
+        if (self.has_value) {
+            let value: T = self.value;
+            value.free();
+            self.has_value = false;
+        }
+    }
+}
+
+test "option some and none" {
+    let some: Option<int> = Option.some<int>(42);
+    expect_true(some.is_some());
+    expect_false(some.is_none());
+    expect_eq_int(42, some.unwrap_or(0));
+
+    let none: Option<int> = Option.none<int>();
+    expect_true(none.is_none());
+    expect_false(none.is_some());
+    expect_eq_int(7, none.unwrap_or(7));
+}
+
+test "option pointer access" {
+    let some: Option<int> = Option.some<int>(12);
+    let value: int* = some.as_ptr();
+    expect_not_null(value);
+    expect_eq_int(12, *value);
+
+    let none: Option<int> = Option.none<int>();
+    expect_null(none.as_ptr());
+}
+
+test "option frees disposable value" {
+    let buffer: ByteBuffer = ByteBuffer.with_capacity((usize)4);
+    expect_not_null(buffer.data);
+
+    let maybe_buffer: Option<ByteBuffer> = Option.some<ByteBuffer>(buffer);
+    maybe_buffer.free();
+    expect_false(maybe_buffer.has_value);
+}

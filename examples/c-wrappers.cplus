@@ -1,0 +1,23 @@
+import c.stdio;
+import c.stdlib;
+import c.string;
+import c.math;
+import c.time;
+
+fn main() -> int {
+    printf("atoi=%d strlen=%llu sqrt=%.1f\n",
+        atoi("42"),
+        strlen("hello"),
+        sqrt(9.0));
+
+    let start: clock_t = clock();
+    let memory: void* = malloc(16);
+    if (memory != null) {
+        memset(memory, 0, 16);
+        free(memory);
+    }
+
+    let elapsed: clock_t = clock() - start;
+    printf("elapsed ticks=%lld\n", (long long)elapsed);
+    return 0;
+}

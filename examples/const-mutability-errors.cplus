@@ -1,0 +1,19 @@
+struct Box {
+    value: int;
+}
+
+const global_limit: int = 10;
+
+fn main() -> int {
+    const count: int = 1;
+    count = 2;
+
+    const box: Box = Box { value: 1 };
+    box.value = 3;
+
+    for (const i: int = 0; i < 1; i++) {
+    }
+
+    global_limit = 20;
+    return 0;
+}

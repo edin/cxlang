@@ -1,0 +1,35 @@
+fn parse_positive(text: StringView) -> Result<int, StringView> {
+    let parsed: Option<int> = text.parse_int();
+    if (!parsed.has_value) {
+        return Result.err<int, StringView>(text);
+    }
+
+    if (parsed.value < 0) {
+        return Result.err<int, StringView>(text);
+    }
+
+    return Result.ok<int, StringView>(parsed.value);
+}
+
+fn main() -> int {
+    let good_text: StringView = StringView.from_cstr("42");
+    let bad_text: StringView = StringView.from_cstr("-7");
+
+    let good: Result<int, StringView> = parse_positive(good_text);
+    let bad: Result<int, StringView> = parse_positive(bad_text);
+
+    if (!good.is_ok() || good.unwrap_or(0) != 42) {
+        return 1;
+    }
+
+    if (!bad.is_error()) {
+        return 2;
+    }
+
+    let error: StringView = bad.error_or(StringView.empty());
+    if (!error.equals_cstr("-7")) {
+        return 3;
+    }
+
+    return 0;
+}

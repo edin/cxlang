@@ -1,0 +1,177 @@
+module std.core;
+
+struct Queue<T> {
+    data: T*;
+    length: usize;
+    capacity: usize;
+    head: usize;
+    allocator: Allocator*;
+}
+
+extension Queue<T> {
+    static fn create() -> Queue<T> {
+        return Queue<T>.with_capacity(0);
+    }
+
+    static fn with_capacity(capacity: usize) -> Queue<T> {
+        return Queue<T>.with_allocator(Allocator.default(), capacity);
+    }
+
+    static fn with_allocator(allocator: Allocator*, capacity: usize) -> Queue<T> {
+        let queue: Queue<T>;
+        queue.data = null;
+        queue.length = 0;
+        queue.capacity = 0;
+        queue.head = 0;
+        queue.allocator = allocator;
+
+        if (capacity == 0) {
+            return queue;
+        }
+
+        queue.data = (T*)allocator.allocate_bytes(capacity * sizeof(T));
+        if (queue.data == null) {
+            return queue;
+        }
+
+        queue.capacity = capacity;
+        return queue;
+    }
+
+    fn free() -> void {
+        if (self.data != null) {
+            self.allocator.free_bytes(self.data, self.capacity * sizeof(T));
+        }
+
+        self.data = null;
+        self.length = 0;
+        self.capacity = 0;
+        self.head = 0;
+        self.allocator = Allocator.default();
+    }
+
+    fn clear() -> void {
+        self.length = 0;
+        self.head = 0;
+    }
+
+    fn is_empty() -> bool {
+        return self.length == 0;
+    }
+
+    fn reserve(capacity: usize) -> bool {
+        if (capacity <= self.capacity) {
+            return true;
+        }
+
+        let data: T* = (T*)self.allocator.allocate_bytes(capacity * sizeof(T));
+        if (data == null) {
+            return false;
+        }
+
+        let i: usize = 0;
+        while (i < self.length) {
+            let source_index: usize = (self.head + i) % self.capacity;
+            data[i] = self.data[source_index];
+            i += 1;
+        }
+
+        if (self.data != null) {
+            self.allocator.free_bytes(self.data, self.capacity * sizeof(T));
+        }
+
+        self.data = data;
+        self.capacity = capacity;
+        self.head = 0;
+        return true;
+    }
+
+    fn enqueue(value: T) -> bool {
+        if (self.length >= self.capacity) {
+            let new_capacity: usize = 4;
+            if (self.capacity > 0) {
+                new_capacity = self.capacity * 2;
+            }
+
+            if (!self.reserve(new_capacity)) {
+                return false;
+            }
+        }
+
+        let index: usize = (self.head + self.length) % self.capacity;
+        self.data[index] = value;
+        self.length += 1;
+        return true;
+    }
+
+    fn dequeue() -> Option<T> {
+        if (self.length == 0) {
+            return Option.none<T>();
+        }
+
+        let value: T = self.data[self.head];
+        self.head = (self.head + 1) % self.capacity;
+        self.length -= 1;
+
+        if (self.length == 0) {
+            self.head = 0;
+        }
+
+        return Option.some<T>(value);
+    }
+
+    fn peek() -> Option<T> {
+        if (self.length == 0) {
+            return Option.none<T>();
+        }
+
+        return Option.some<T>(self.data[self.head]);
+    }
+}
+
+test "queue enqueue dequeue and wrap" {
+    let queue: Queue<int> = Queue<int>.with_capacity((usize)3);
+    expect_true(queue.is_empty());
+    expect_true(queue.enqueue(1));
+    expect_true(queue.enqueue(2));
+    expect_true(queue.enqueue(3));
+
+    let first: Option<int> = queue.dequeue();
+    let second: Option<int> = queue.dequeue();
+    expect_eq_int(1, first.value);
+    expect_eq_int(2, second.value);
+
+    expect_true(queue.enqueue(4));
+    expect_true(queue.enqueue(5));
+    expect_true(queue.enqueue(6));
+    expect_true(queue.enqueue(7));
+
+    let peeked: Option<int> = queue.peek();
+    let third: Option<int> = queue.dequeue();
+    let fourth: Option<int> = queue.dequeue();
+    let fifth: Option<int> = queue.dequeue();
+    let sixth: Option<int> = queue.dequeue();
+    let seventh: Option<int> = queue.dequeue();
+    expect_eq_int(3, peeked.value);
+    expect_eq_int(3, third.value);
+    expect_eq_int(4, fourth.value);
+    expect_eq_int(5, fifth.value);
+    expect_eq_int(6, sixth.value);
+    expect_eq_int(7, seventh.value);
+    expect_true(queue.is_empty());
+    expect_false(queue.dequeue().has_value);
+
+    queue.free();
+}
+
+test "queue clear resets state" {
+    let queue: Queue<int> = Queue<int>.create();
+    expect_true(queue.enqueue(10));
+    expect_true(queue.enqueue(20));
+    queue.clear();
+    expect_true(queue.is_empty());
+    expect_eq_usize((usize)0, queue.head);
+    expect_false(queue.peek().has_value);
+
+    queue.free();
+}

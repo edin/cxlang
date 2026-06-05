@@ -1,0 +1,16 @@
+import c.stdio;
+
+fn main() -> int {
+    let letters: int = 0;
+    foreach ch in 'a'...'z' {
+        letters = letters + 1;
+    }
+
+    let total: int = 0;
+    foreach i in 0..10 {
+        total = total + i;
+    }
+
+    printf("letters=%d total=%d\n", letters, total);
+    return (letters - 26) + (total - 45);
+}

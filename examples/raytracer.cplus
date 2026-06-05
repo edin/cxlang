@@ -1,0 +1,460 @@
+import c.math;
+import c.stdint;
+import c.stdio;
+import c.stdlib;
+import c.time;
+import std.bitmap;
+
+enum SurfaceType {
+    SHINY_SURFACE,
+    CHECKERBOARD_SURFACE
+}
+
+struct Vector {
+    x: double;
+    y: double;
+    z: double;
+
+    static fn create(x: double, y: double, z: double) -> Vector {
+        return Vector { x: x, y: y, z: z };
+    }
+
+    fn cross(v1: Vector*, v2: Vector*) -> Vector {
+        return Vector.create(
+            v1.y * v2.z - v1.z * v2.y,
+            v1.z * v2.x - v1.x * v2.z,
+            v1.x * v2.y - v1.y * v2.x
+        );
+    }
+
+    fn length(v: Vector*) -> double {
+        return sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    }
+
+    fn scale(v: Vector*, k: double) -> Vector {
+        return Vector.create(k * v.x, k * v.y, k * v.z);
+    }
+
+    static fn norm(v: Vector) -> Vector {
+        let mag: double = Vector.length(&v);
+        let div: double = (mag == 0) ? FarAway : 1.0 / mag;
+        return Vector.scale(&v, div);
+    }
+
+    fn dot(v1: Vector*, v2: Vector*) -> double {
+        return (v1.x * v2.x) + (v1.y * v2.y) + (v1.z * v2.z);
+    }
+
+    fn add(v1: Vector*, v2: Vector*) -> Vector {
+        return Vector.create(v1.x + v2.x, v1.y + v2.y, v1.z + v2.z);
+    }
+
+    fn sub(v1: Vector*, v2: Vector*) -> Vector {
+        return Vector.create(v1.x - v2.x, v1.y - v2.y, v1.z - v2.z);
+    }
+}
+
+struct Color {
+    b: double;
+    g: double;
+    r: double;
+
+    static fn create(r: double, g: double, b: double) -> Color {
+        return Color { r: r, g: g, b: b };
+    }
+
+    fn scale(color: Color*, k: double) -> Color {
+        return Color.create(k * color.r, k * color.g, k * color.b);
+    }
+
+    fn multiply(v1: Color*, v2: Color*) -> Color {
+        return Color.create(v1.r * v2.r, v1.g * v2.g, v1.b * v2.b);
+    }
+
+    fn multiply_self(v1: Color*, v2: Color*) -> void {
+        v1.r = v1.r * v2.r;
+        v1.g = v1.g * v2.g;
+        v1.b = v1.b * v2.b;
+    }
+
+    fn add(v1: Color*, v2: Color*) -> Color {
+        return Color.create(v1.r + v2.r, v1.g + v2.g, v1.b + v2.b);
+    }
+
+    fn to_drawing_color(c: Color*) -> Color32 {
+        let result: Color32;
+        result.b = Color32.legalize(c.b);
+        result.g = Color32.legalize(c.g);
+        result.r = Color32.legalize(c.r);
+        result.a = 255;
+        return result;
+    }
+}
+
+struct Camera {
+    forward: Vector;
+    right: Vector;
+    up: Vector;
+    pos: Vector;
+
+    static fn create(pos: Vector, lookAt: Vector) -> Camera {
+        let camera: Camera;
+        camera.pos = pos;
+
+        let down: Vector = Vector.create(0.0, -1.0, 0.0);
+        let forward: Vector = Vector.sub(&lookAt, &pos);
+
+        camera.forward = Vector.norm(forward);
+        camera.right = Vector.cross(&camera.forward, &down);
+        camera.up = Vector.cross(&camera.forward, &camera.right);
+
+        let rightNorm: Vector = Vector.norm(camera.right);
+        let upNorm: Vector = Vector.norm(camera.up);
+
+        camera.right = Vector.scale(&rightNorm, 1.5);
+        camera.up = Vector.scale(&upNorm, 1.5);
+        return camera;
+    }
+
+    fn get_point(camera: Camera*, x: int, y: int, screenWidth: int, screenHeight: int) -> Vector {
+        let recenterX: double = (x - (screenWidth / 2.0)) / 2.0 / screenWidth;
+        let recenterY: double = -(y - (screenHeight / 2.0)) / 2.0 / screenHeight;
+
+        let vx: Vector = Vector.scale(&camera.right, recenterX);
+        let vy: Vector = Vector.scale(&camera.up, recenterY);
+
+        let v: Vector = Vector.add(&vx, &vy);
+        let z: Vector = Vector.add(&camera.forward, &v);
+
+        z = Vector.norm(z);
+        return z;
+    }
+}
+
+struct Ray {
+    start: Vector;
+    dir: Vector;
+
+    static fn create(start: Vector, dir: Vector) -> Ray {
+        return Ray { start: start, dir: dir };
+    }
+
+    fn intersections(ray: Ray*, scene: Scene*) -> Intersection {
+        let closest: double = FarAway;
+        let closestInter: Intersection;
+        closestInter.thing = null;
+
+        let inter: Intersection;
+        for (let i: usize = 0; i < scene.things.length; i += 1) {
+            let thing: Thing* = &scene.things.data[i];
+            let intersect: int = Thing.intersect(thing, ray, &inter);
+            if (intersect == 1 && inter.dist < closest) {
+                closestInter = inter;
+                closest = inter.dist;
+            }
+        }
+
+        return closestInter;
+    }
+
+    fn trace(ray: Ray*, scene: Scene*, depth: int) -> Color {
+        let isect: Intersection = Ray.intersections(ray, scene);
+        if (isect.thing != null) {
+            return Intersection.shade(&isect, scene, depth);
+        }
+
+        return background;
+    }
+}
+
+struct Sphere {
+    surface: SurfaceType;
+    radius2: double;
+    center: Vector;
+}
+
+struct Plane {
+    surface: SurfaceType;
+    offset: double;
+    norm: Vector;
+}
+
+union Thing {
+    Sphere: Sphere;
+    Plane: Plane;
+
+    static fn sphere(center: Vector, radius: double, surface: SurfaceType) -> Thing {
+        let sphere: Sphere = Sphere {
+            surface: surface,
+            radius2: radius * radius,
+            center: center
+        };
+        return Thing.Sphere(sphere);
+    }
+
+    static fn plane(norm: Vector, offset: double, surface: SurfaceType) -> Thing {
+        let plane: Plane = Plane {
+            surface: surface,
+            offset: offset,
+            norm: norm
+        };
+        return Thing.Plane(plane);
+    }
+
+    fn surface(thing: Thing*) -> SurfaceType {
+        match thing {
+            Sphere: sphere => return sphere.surface;
+            Plane: plane => return plane.surface;
+        }
+    }
+
+    fn normal(thing: Thing*, pos: Vector*) -> Vector {
+        match thing {
+            Sphere: sphere => {
+                let diff: Vector = Vector.sub(pos, &sphere.center);
+                return Vector.norm(diff);
+            }
+            Plane: plane => {
+                return plane.norm;
+            }
+        }
+    }
+
+    fn intersect(thing: Thing*, ray: Ray*, result: Intersection*) -> int {
+        match thing {
+            Sphere: sphere => {
+                let eo: Vector = Vector.sub(&sphere.center, &ray.start);
+                let v: double = Vector.dot(&eo, &ray.dir);
+                let dist: double = 0.0;
+
+                if (v >= 0.0) {
+                    let disc: double = sphere.radius2 - (Vector.dot(&eo, &eo) - (v * v));
+                    if (disc >= 0.0) {
+                        dist = v - sqrt(disc);
+                    }
+                }
+
+                if (dist != 0.0) {
+                    result.thing = thing;
+                    result.ray = *ray;
+                    result.dist = dist;
+                    return 1;
+                }
+            }
+            Plane: plane => {
+                let denom: double = Vector.dot(&plane.norm, &ray.dir);
+                if (denom <= 0.0) {
+                    result.dist = (Vector.dot(&plane.norm, &ray.start) + plane.offset) / (-denom);
+                    result.thing = thing;
+                    result.ray = *ray;
+                    return 1;
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    fn reflection_color(thing: Thing*, pos: Vector*, normal: Vector*, rd: Vector*, scene: Scene*, depth: int) -> Color {
+        let ray: Ray = Ray.create(*pos, *rd);
+        let color: Color = Ray.trace(&ray, scene, depth + 1);
+
+        let properties: SurfaceProperties = SurfaceProperties.from_surface(Thing.surface(thing), pos);
+
+        return Color.scale(&color, properties.reflect);
+    }
+
+    fn natural_color(thing: Thing*, pos: Vector*, norm: Vector*, rd: Vector*, scene: Scene*) -> Color {
+        let resultColor: Color = black;
+
+        let sp: SurfaceProperties = SurfaceProperties.from_surface(Thing.surface(thing), pos);
+
+        for (let i: usize = 0; i < scene.lights.length; i += 1) {
+            let light: Light* = &scene.lights.data[i];
+            let ldis: Vector = Vector.sub(&light.pos, pos);
+            let livec: Vector = Vector.norm(ldis);
+
+            let ldisLen: double = Vector.length(&ldis);
+            let ray: Ray = Ray.create(*pos, livec);
+
+            let neatIsect: Intersection = Ray.intersections(&ray, scene);
+            let isInShadow: int = (neatIsect.thing != null) && (neatIsect.dist <= ldisLen);
+            if (!isInShadow) {
+                let rdNorm: Vector = Vector.norm(*rd);
+
+                let illum: double = Vector.dot(&livec, norm);
+                let specular: double = Vector.dot(&livec, &rdNorm);
+
+                let lcolor: Color = (illum > 0.0) ? Color.scale(&light.color, illum) : defaultColor;
+                let scolor: Color = (specular > 0.0) ? Color.scale(&light.color, pow(specular, sp.roughness)) : defaultColor;
+
+                Color.multiply_self(&lcolor, &sp.diffuse);
+                Color.multiply_self(&scolor, &sp.specular);
+
+                let result: Color = Color.add(&lcolor, &scolor);
+
+                resultColor.r += result.r;
+                resultColor.g += result.g;
+                resultColor.b += result.b;
+            }
+        }
+
+        return resultColor;
+    }
+}
+
+struct Intersection {
+    thing: Thing*;
+    ray: Ray;
+    dist: double;
+
+    static fn create(thing: Thing*, ray: Ray, dist: double) -> Intersection {
+        return Intersection { thing: thing, ray: ray, dist: dist };
+    }
+
+    fn shade(isect: Intersection*, scene: Scene*, depth: int) -> Color {
+        let d: Vector = isect.ray.dir;
+        let scaled: Vector = Vector.scale(&d, isect.dist);
+
+        let pos: Vector = Vector.add(&scaled, &isect.ray.start);
+        let normal: Vector = Thing.normal(isect.thing, &pos);
+        let normalDotD: double = Vector.dot(&normal, &d);
+        let normalScaled: Vector = Vector.scale(&normal, normalDotD * 2.0);
+
+        let reflectDir: Vector = Vector.sub(&d, &normalScaled);
+
+        let naturalColor: Color = Thing.natural_color(isect.thing, &pos, &normal, &reflectDir, scene);
+        let bg: Color = background;
+        naturalColor = Color.add(&bg, &naturalColor);
+
+        let reflectedColor: Color = grey;
+        if (depth < scene.maxDepth) {
+            reflectedColor = Thing.reflection_color(isect.thing, &pos, &normal, &reflectDir, scene, depth);
+        }
+
+        return Color.add(&naturalColor, &reflectedColor);
+    }
+}
+
+struct Light {
+    pos: Vector;
+    color: Color;
+
+    static fn create(pos: Vector, color: Color) -> Light {
+        return Light { pos: pos, color: color };
+    }
+}
+
+struct Scene {
+    maxDepth: int;
+    things: Vec<Thing>;
+    lights: Vec<Light>;
+    camera: Camera;
+
+    static fn create() -> Scene {
+        let scene: Scene;
+        scene.maxDepth = 5;
+
+        let things: Vec<Thing> = Vec<Thing>.with_capacity(3);
+        things.add<Thing>(Thing.plane(Vector.create(0.0, 1.0, 0.0), 0.0, CHECKERBOARD_SURFACE));
+        things.add<Thing>(Thing.sphere(Vector.create(0.0, 1.0, -0.25), 1.0, SHINY_SURFACE));
+        things.add<Thing>(Thing.sphere(Vector.create(-1.0, 0.5, 1.5), 0.5, SHINY_SURFACE));
+
+        let lights: Vec<Light> = Vec<Light>.with_capacity(4);
+        lights.add<Light>(Light.create(Vector.create(-2.0, 2.5, 0.0), Color.create(0.49, 0.07, 0.07)));
+        lights.add<Light>(Light.create(Vector.create(1.5, 2.5, 1.5), Color.create(0.07, 0.07, 0.49)));
+        lights.add<Light>(Light.create(Vector.create(1.5, 2.5, -1.5), Color.create(0.07, 0.49, 0.071)));
+        lights.add<Light>(Light.create(Vector.create(0.0, 3.5, 0.0), Color.create(0.21, 0.21, 0.35)));
+
+        scene.things = things;
+        scene.lights = lights;
+        scene.camera = Camera.create(Vector.create(3.0, 2.0, 4.0), Vector.create(-1.0, 0.5, 0.0));
+        return scene;
+    }
+
+    fn free(self: Scene*) -> void {
+        let things: Vec<Thing> = self.things;
+        let lights: Vec<Light> = self.lights;
+
+        things.free<Thing>();
+        lights.free<Light>();
+
+        self.things = things;
+        self.lights = lights;
+    }
+
+    fn render(scene: Scene*, bitmap: Bitmap*) -> void {
+        let ray: Ray;
+        ray.start = scene.camera.pos;
+        for (let y: int = 0; y < bitmap.height; y += 1) {
+            let pColor: Color32* = (Color32*)(&bitmap.data[y * bitmap.stride]);
+            for (let x: int = 0; x < bitmap.width; x += 1) {
+                ray.dir = Camera.get_point(&scene.camera, x, y, bitmap.height, bitmap.width);
+                let color: Color = Ray.trace(&ray, scene, 0);
+                *pColor = Color.to_drawing_color(&color);
+                pColor += 1;
+            }
+        }
+    }
+}
+
+struct SurfaceProperties {
+    diffuse: Color;
+    specular: Color;
+    reflect: double;
+    roughness: double;
+
+    static fn from_surface(surface: SurfaceType, pos: Vector*) -> SurfaceProperties {
+        let properties: SurfaceProperties;
+        if (surface == SHINY_SURFACE) {
+            properties.diffuse = white;
+            properties.specular = grey;
+            properties.reflect = 0.7;
+            properties.roughness = 250.0;
+        }
+        else {
+            let val: int = (int)(floor(pos.z) + floor(pos.x));
+            if (val % 2 != 0) {
+                properties.reflect = 0.1;
+                properties.diffuse = white;
+            }
+            else {
+                properties.reflect = 0.7;
+                properties.diffuse = black;
+            }
+
+            properties.specular = white;
+            properties.roughness = 150.0;
+        }
+
+        return properties;
+    }
+}
+
+const FarAway: double = 1000000.0;
+const white: Color = Color { r: 1.0, g: 1.0, b: 1.0 };
+const grey: Color = Color { r: 0.5, g: 0.5, b: 0.5 };
+const black: Color = Color { r: 0.0, g: 0.0, b: 0.0 };
+const background: Color = Color { r: 0.0, g: 0.0, b: 0.0 };
+const defaultColor: Color = Color { r: 0.0, g: 0.0, b: 0.0 };
+
+fn main() -> int {
+    let t1: clock_t = clock();
+    let scene: Scene = Scene.create();
+
+    let bitmap: Bitmap = Bitmap.create(500, 500);
+    scene.render(&bitmap);
+
+    let t2: clock_t = clock();
+    let time: clock_t = t2 - t1;
+    let time_ms: int = (int)((((double)time) / CLOCKS_PER_SEC) * 1000);
+
+    printf("Completed in %d ms\n", time_ms);
+    bitmap.save("cplus-raytracer.bmp");
+
+    scene.free();
+    bitmap.free();
+
+    return 0;
+}
+

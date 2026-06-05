@@ -1,0 +1,27 @@
+fn find_value(index: int) -> Option<int> {
+    if (index == 1) {
+        return Option.some<int>(42);
+    }
+
+    return Option.none<int>();
+}
+
+fn main() -> int {
+    let found: Option<int> = find_value(1);
+    let missing: Option<int> = find_value(2);
+
+    if (found.is_none<int>()) {
+        return 1;
+    }
+
+    if (missing.is_some<int>()) {
+        return 2;
+    }
+
+    let value: int* = found.as_ptr<int>();
+    if (value == null) {
+        return 3;
+    }
+
+    return value[0] + missing.unwrap_or<int>(8) - 50;
+}

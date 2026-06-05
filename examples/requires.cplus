@@ -1,0 +1,13 @@
+requires Iterator<T> {
+    fn next(self: Self*) -> bool;
+    fn value(self: Self*) -> T*;
+}
+
+requires Iterable<T, I>
+where I: Iterator<T> {
+    fn iterator(self: Self*) -> I;
+}
+
+fn main() -> int {
+    return 0;
+}

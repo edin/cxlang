@@ -1,0 +1,29 @@
+type StackView<T> using Vec<T> {
+    expose static with_capacity -> Self;
+    expose add as push;
+    expose pop;
+    expose free;
+}
+
+extension StackView<T> {
+    fn peek() -> Option<T> {
+        if (self.length == 0) {
+            return Option.none<T>();
+        }
+
+        return Option.some<T>(self.data[self.length - 1]);
+    }
+}
+
+fn main() -> int {
+    let stack: StackView<int> = StackView<int>.with_capacity(2);
+    stack.push(4);
+    stack.push(8);
+
+    let top: Option<int> = stack.peek();
+    let first: Option<int> = stack.pop();
+    let second: Option<int> = stack.pop();
+
+    stack.free();
+    return top.value + first.value + second.value - 20;
+}

@@ -1,0 +1,8 @@
+import c.stdio;
+
+fn main() -> int {
+    let ch: int = ',';
+    printf("literal has comma, paren ), brace }, arrow => and question ? colon :\n");
+    printf("value=%d text=%s\n", ch, "a,b,(c),{d}");
+    return ch - 44;
+}

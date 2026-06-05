@@ -1,0 +1,177 @@
+module std.bitmap;
+
+import c.stdint;
+import c.stdio;
+import c.stdlib;
+
+type UInt8 = uint8_t;
+type DWORD = uint32_t;
+type WORD = uint16_t;
+type LONG = int32_t;
+
+const BI_RGB: int = 0;
+
+
+struct BITMAPINFOHEADER {
+    biSize: DWORD;
+    biWidth: LONG;
+    biHeight: LONG;
+    biPlanes: WORD;
+    biBitCount: WORD;
+    biCompression: DWORD;
+    biSizeImage: DWORD;
+    biXPelsPerMeter: LONG;
+    biYPelsPerMeter: LONG;
+    biClrUsed: DWORD;
+    biClrImportant: DWORD;
+}
+
+struct BITMAPFILEHEADER {
+    bfType: WORD;
+    bfSize: DWORD;
+    bfReserved1: WORD;
+    bfReserved2: WORD;
+    bfOffBits: DWORD;
+}
+
+struct Color32 {
+    b: UInt8;
+    g: UInt8;
+    r: UInt8;
+    a: UInt8;
+
+    static fn legalize(c: double) -> UInt8 {
+        if (c <= 0.0) {
+            return 0;
+        }
+
+        if (c >= 1.0) {
+            return 255;
+        }
+
+        return (UInt8)(c * 255.0);
+    }
+}
+
+struct Bitmap {
+    data: UInt8*;
+    width: int;
+    height: int;
+    stride: int;
+
+    static fn empty() -> Bitmap {
+        return Bitmap {
+            data: null,
+            width: 0,
+            height: 0,
+            stride: 0
+        };
+    }
+
+    static fn create(width: int, height: int) -> Bitmap {
+        let bitmap: Bitmap = Bitmap {
+            data: null,
+            width: width,
+            height: height,
+            stride: width * 4
+        };
+        bitmap.data = (UInt8*)malloc(bitmap.stride * bitmap.height);
+        return bitmap;
+    }
+
+    static fn load(fileName: char*) -> Bitmap {
+        let bitmap: Bitmap = Bitmap.empty();
+        let hFile: FILE* = fopen(fileName, "rb");
+        if (hFile == null) {
+            return bitmap;
+        }
+
+        let bfh: BITMAPFILEHEADER = {0};
+        fread(&bfh.bfType, sizeof(WORD), 1, hFile);
+        fread(&bfh.bfSize, sizeof(DWORD), 1, hFile);
+        fread(&bfh.bfReserved1, sizeof(WORD), 1, hFile);
+        fread(&bfh.bfReserved2, sizeof(WORD), 1, hFile);
+        fread(&bfh.bfOffBits, sizeof(DWORD), 1, hFile);
+
+        let bmpInfoHeader: BITMAPINFOHEADER = {0};
+        fread(&bmpInfoHeader, sizeof(char), sizeof(BITMAPINFOHEADER), hFile);
+
+        if (bfh.bfType != 66 + (77 << 8)) {
+            fclose(hFile);
+            return bitmap;
+        }
+
+        if (bmpInfoHeader.biBitCount != 32) {
+            fclose(hFile);
+            return bitmap;
+        }
+
+        if (bmpInfoHeader.biCompression != BI_RGB) {
+            fclose(hFile);
+            return bitmap;
+        }
+
+        let width: int = bmpInfoHeader.biWidth;
+        let height: int = bmpInfoHeader.biHeight;
+        if (height < 0) {
+            height = -height;
+        }
+
+        bitmap = Bitmap.create(width, height);
+        fseek(hFile, bfh.bfOffBits, SEEK_SET);
+        fread(bitmap.data, sizeof(char), bitmap.stride * bitmap.height, hFile);
+        fclose(hFile);
+        return bitmap;
+    }
+
+    fn free(self: Bitmap*) -> void {
+        free(self.data);
+        self.data = null;
+        self.width = 0;
+        self.height = 0;
+        self.stride = 0;
+    }
+
+    fn pixel(self: Bitmap*, x: int, y: int) -> Color32* {
+        return (Color32*)(&self.data[(y * self.stride) + (x * 4)]);
+    }
+
+    fn clear(self: Bitmap*, color: Color32) -> void {
+        for (let y: int = 0; y < self.height; y += 1) {
+            for (let x: int = 0; x < self.width; x += 1) {
+                *self.pixel(x, y) = color;
+            }
+        }
+    }
+
+    fn save(self: Bitmap*, fileName: char*) -> void {
+        let bmpInfoHeader: BITMAPINFOHEADER = {0};
+        bmpInfoHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmpInfoHeader.biBitCount = 32;
+        bmpInfoHeader.biClrImportant = 0;
+        bmpInfoHeader.biClrUsed = 0;
+        bmpInfoHeader.biCompression = BI_RGB;
+        bmpInfoHeader.biHeight = -self.height;
+        bmpInfoHeader.biWidth = self.width;
+        bmpInfoHeader.biPlanes = 1;
+        bmpInfoHeader.biSizeImage = self.width * self.height * 4;
+
+        let bfh: BITMAPFILEHEADER = {0};
+        bfh.bfType = 66 + (77 << 8);
+        bfh.bfOffBits = 14 + sizeof(BITMAPINFOHEADER);
+        bfh.bfSize = bfh.bfOffBits + bmpInfoHeader.biSizeImage;
+
+        let hFile: FILE*;
+        hFile = fopen(fileName, "wb");
+
+        fwrite(&bfh.bfType, sizeof(WORD), 1, hFile);
+        fwrite(&bfh.bfSize, sizeof(DWORD), 1, hFile);
+        fwrite(&bfh.bfReserved1, sizeof(WORD), 1, hFile);
+        fwrite(&bfh.bfReserved2, sizeof(WORD), 1, hFile);
+        fwrite(&bfh.bfOffBits, sizeof(DWORD), 1, hFile);
+        fwrite(&bmpInfoHeader, sizeof(char), sizeof(BITMAPINFOHEADER), hFile);
+        fseek(hFile, bfh.bfOffBits, SEEK_SET);
+        fwrite(self.data, sizeof(char), bmpInfoHeader.biSizeImage, hFile);
+        fclose(hFile);
+    }
+}

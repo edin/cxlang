@@ -1,0 +1,372 @@
+module std.core;
+
+import c.stdlib;
+
+struct Vec<T>: Contiguous<T> {
+    data: T*;
+    length: usize;
+    capacity: usize;
+    allocator: Allocator*;
+}
+
+extension Vec<T> {
+    static fn create() -> Vec<T> {
+        return Vec<T>.with_capacity(0);
+    }
+
+    static fn with_capacity(capacity: usize) -> Vec<T> {
+        let values: Vec<T>;
+        values.data = null;
+        values.length = 0;
+        values.capacity = 0;
+        values.allocator = Allocator.default();
+
+        if (capacity == 0) {
+            return values;
+        }
+
+        values.data = (T*)values.allocator.allocate_bytes(capacity * sizeof(T));
+        if (values.data == null) {
+            return values;
+        }
+
+        values.capacity = capacity;
+        return values;
+    }
+
+    static fn with_allocator(allocator: Allocator*, capacity: usize) -> Vec<T> {
+        let values: Vec<T>;
+        values.data = null;
+        values.length = 0;
+        values.capacity = 0;
+        values.allocator = allocator;
+
+        if (capacity == 0) {
+            return values;
+        }
+
+        values.data = (T*)allocator.allocate_bytes(capacity * sizeof(T));
+        if (values.data == null) {
+            return values;
+        }
+
+        values.capacity = capacity;
+        return values;
+    }
+
+    fn free() -> void {
+        if (self.data != null) {
+            self.allocator.free_bytes(self.data, self.capacity * sizeof(T));
+        }
+
+        self.data = null;
+        self.length = 0;
+        self.capacity = 0;
+        self.allocator = Allocator.default();
+    }
+
+    fn clear() -> void {
+        self.length = 0;
+    }
+
+    fn is_empty() -> bool {
+        return self.length == 0;
+    }
+
+    fn as_slice() -> Slice<T> {
+        let slice: Slice<T>;
+        slice.data = self.data;
+        slice.length = self.length;
+        return slice;
+    }
+
+    fn reserve(capacity: usize) -> bool {
+        if (capacity <= self.capacity) {
+            return true;
+        }
+
+        let data: T* = (T*)self.allocator.resize_bytes(
+            self.data,
+            self.capacity * sizeof(T),
+            capacity * sizeof(T));
+
+        if (data == null) {
+            return false;
+        }
+
+        self.data = data;
+        self.capacity = capacity;
+        return true;
+    }
+
+    fn truncate(length: usize) -> void {
+        if (length < self.length) {
+            self.length = length;
+        }
+    }
+
+    fn resize(length: usize, value: T) -> bool {
+        if (length <= self.length) {
+            self.length = length;
+            return true;
+        }
+
+        if (!self.reserve(length)) {
+            return false;
+        }
+
+        while (self.length < length) {
+            self.data[self.length] = value;
+            self.length += 1;
+        }
+
+        return true;
+    }
+
+    fn push(value: T) -> bool {
+        if (self.length >= self.capacity) {
+            let new_capacity: usize = 4;
+            if (self.capacity > 0) {
+                new_capacity = self.capacity * 2;
+            }
+
+            if (!self.reserve(new_capacity)) {
+                return false;
+            }
+        }
+
+        self.data[self.length] = value;
+        self.length += 1;
+        return true;
+    }
+
+    fn add(value: T) -> bool {
+        return self.push(value);
+    }
+
+    fn insert(index: usize, value: T) -> bool {
+        if (index > self.length) {
+            return false;
+        }
+
+        if (self.length >= self.capacity) {
+            let new_capacity: usize = 4;
+            if (self.capacity > 0) {
+                new_capacity = self.capacity * 2;
+            }
+
+            if (!self.reserve(new_capacity)) {
+                return false;
+            }
+        }
+
+        let i: usize = self.length;
+        while (i > index) {
+            self.data[i] = self.data[i - 1];
+            i -= 1;
+        }
+
+        self.data[index] = value;
+        self.length += 1;
+        return true;
+    }
+
+    fn get(index: usize) -> Option<T> {
+        if (index >= self.length) {
+            return Option.none<T>();
+        }
+
+        return Option.some<T>(self.data[index]);
+    }
+
+    fn get_ptr(index: usize) -> T* {
+        if (index >= self.length) {
+            return null;
+        }
+
+        return &self.data[index];
+    }
+
+    fn first() -> Option<T> {
+        return self.get(0);
+    }
+
+    fn first_ptr() -> T* {
+        return self.get_ptr(0);
+    }
+
+    fn last() -> Option<T> {
+        if (self.length == 0) {
+            return Option.none<T>();
+        }
+
+        return Option.some<T>(self.data[self.length - 1]);
+    }
+
+    fn last_ptr() -> T* {
+        if (self.length == 0) {
+            return null;
+        }
+
+        return &self.data[self.length - 1];
+    }
+
+    fn pop() -> Option<T> {
+        if (self.length == 0) {
+            return Option.none<T>();
+        }
+
+        self.length -= 1;
+        return Option.some<T>(self.data[self.length]);
+    }
+
+    fn remove_at(index: usize) -> bool {
+        if (index >= self.length) {
+            return false;
+        }
+
+        let i: usize = index;
+        while (i + 1 < self.length) {
+            self.data[i] = self.data[i + 1];
+            i += 1;
+        }
+
+        self.length -= 1;
+        return true;
+    }
+
+    fn swap_remove(index: usize) -> Option<T> {
+        if (index >= self.length) {
+            return Option.none<T>();
+        }
+
+        let removed: T = self.data[index];
+        self.length -= 1;
+        if (index != self.length) {
+            self.data[index] = self.data[self.length];
+        }
+
+        return Option.some<T>(removed);
+    }
+}
+
+extension Vec<T>
+where T: Equal<T> {
+    fn index_of(value: T) -> Option<usize> {
+        for (let i: usize = 0; i < self.length; i += 1) {
+            if (T.equals(self.data[i], value)) {
+                return Option.some<usize>(i);
+            }
+        }
+
+        return Option.none<usize>();
+    }
+
+    fn contains(value: T) -> bool {
+        return self.index_of(value).has_value;
+    }
+
+    fn remove_value(value: T) -> bool {
+        let index: Option<usize> = self.index_of(value);
+        if (!index.has_value) {
+            return false;
+        }
+
+        return self.remove_at(index.value);
+    }
+}
+
+test "vec push get and pop" {
+    let values: Vec<int> = Vec<int>.with_capacity(1);
+    expect_eq_usize((usize)0, values.length);
+    expect(values.capacity >= 1);
+
+    expect_true(values.push(10));
+    expect_true(values.push(20));
+    expect_eq_usize((usize)2, values.length);
+    expect(values.capacity >= 2);
+
+    let first: Option<int> = values.get(0);
+    let second: Option<int> = values.get(1);
+    expect_true(first.has_value);
+    expect_true(second.has_value);
+    expect_eq_int(10, first.value);
+    expect_eq_int(20, second.value);
+
+    let popped: Option<int> = values.pop();
+    expect_true(popped.has_value);
+    expect_eq_int(20, popped.value);
+    expect_eq_usize((usize)1, values.length);
+
+    values.free();
+}
+
+test "vec insert remove and swap remove" {
+    let values: Vec<int> = Vec<int>.create();
+    expect_true(values.push(1));
+    expect_true(values.push(3));
+    expect_true(values.insert(1, 2));
+    expect_eq_usize((usize)3, values.length);
+    expect_eq_int(1, values.data[0]);
+    expect_eq_int(2, values.data[1]);
+    expect_eq_int(3, values.data[2]);
+
+    expect_true(values.remove_at(1));
+    expect_eq_usize((usize)2, values.length);
+    expect_eq_int(1, values.data[0]);
+    expect_eq_int(3, values.data[1]);
+
+    let removed: Option<int> = values.swap_remove(0);
+    expect_true(removed.has_value);
+    expect_eq_int(1, removed.value);
+    expect_eq_usize((usize)1, values.length);
+    expect_eq_int(3, values.data[0]);
+
+    values.free();
+}
+
+test "vec pointer access and resize" {
+    let values: Vec<int> = Vec<int>.create();
+    expect_true(values.resize((usize)3, 7));
+    expect_eq_usize((usize)3, values.length);
+    expect_eq_int(7, values.data[0]);
+    expect_eq_int(7, values.data[2]);
+
+    let first: int* = values.first_ptr();
+    let last: int* = values.last_ptr();
+    expect_not_null(first);
+    expect_not_null(last);
+    *first = 10;
+    *last = 30;
+    expect_eq_int(10, values.data[0]);
+    expect_eq_int(30, values.data[2]);
+
+    values.truncate((usize)1);
+    expect_eq_usize((usize)1, values.length);
+    expect_eq_int(10, values.data[0]);
+    expect_null(values.get_ptr(5));
+
+    values.free();
+}
+
+test "vec contains index and remove value" {
+    let values: Vec<int> = Vec<int>.create();
+    expect_true(values.push(10));
+    expect_true(values.push(20));
+    expect_true(values.push(30));
+
+    expect_true(values.contains(20));
+    expect_false(values.contains(99));
+
+    let index: Option<usize> = values.index_of(30);
+    expect_true(index.has_value);
+    expect_eq_usize((usize)2, index.value);
+
+    expect_true(values.remove_value(20));
+    expect_eq_usize((usize)2, values.length);
+    expect_eq_int(10, values.data[0]);
+    expect_eq_int(30, values.data[1]);
+    expect_false(values.remove_value(99));
+
+    values.free();
+}

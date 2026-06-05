@@ -1,0 +1,13 @@
+type IntVec = Vec<int>;
+type ByteSlice = Slice<u8>;
+
+fn main() -> int {
+    let values: IntVec;
+    values.length = 0;
+    values.capacity = 4;
+
+    let bytes: ByteSlice;
+    bytes.length = values.capacity;
+
+    return bytes.length - 4;
+}

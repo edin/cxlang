@@ -1,0 +1,9 @@
+raw union NumberBits {
+    i: int;
+    f: float;
+}
+
+fn main() -> int {
+    let value: NumberBits = NumberBits { i: 42 };
+    return value.i - 42;
+}

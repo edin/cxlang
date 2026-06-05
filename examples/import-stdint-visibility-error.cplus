@@ -1,0 +1,4 @@
+fn main() -> int {
+    let value: uint32_t = 42;
+    return (int)value;
+}

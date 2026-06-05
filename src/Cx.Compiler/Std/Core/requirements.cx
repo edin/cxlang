@@ -1,0 +1,78 @@
+module std.core;
+
+requires Equal<T> {
+    static fn equals(left: T, right: T) -> bool;
+}
+
+requires Hash<T> {
+    static fn hash(value: T) -> u64;
+}
+
+requires Compare<T> {
+    static fn compare(left: T, right: T) -> int;
+}
+
+requires Disposable<T> {
+    fn free(self: Self*) -> void;
+}
+
+static fn int.equals(left: int, right: int) -> bool {
+    return left == right;
+}
+
+static fn int.hash(value: int) -> u64 {
+    return (u64)value;
+}
+
+static fn int.compare(left: int, right: int) -> int {
+    if (left < right) {
+        return -1;
+    }
+
+    if (left > right) {
+        return 1;
+    }
+
+    return 0;
+}
+
+fn equals(left: int, right: int) -> bool {
+    return int.equals(left, right);
+}
+
+fn hash(value: int) -> u64 {
+    return int.hash(value);
+}
+
+fn compare(left: int, right: int) -> int {
+    return int.compare(left, right);
+}
+
+test "int equal hash compare requirements" {
+    expect_true(int.equals(10, 10));
+    expect_false(int.equals(10, 11));
+    expect_eq_u64((u64)42, int.hash(42));
+    expect_eq_int(-1, int.compare(1, 2));
+    expect_eq_int(0, int.compare(2, 2));
+    expect_eq_int(1, int.compare(3, 2));
+}
+
+test "spaceship operator uses compare requirement" {
+    let low: int = 10;
+    let high: int = 20;
+    let same: int = 10;
+
+    expect_eq_int(-1, low <=> high);
+    expect_eq_int(0, low <=> same);
+    expect_eq_int(1, high <=> low);
+}
+
+test "string view equal and hash requirements" {
+    let left: StringView = StringView.from_cstr("cx");
+    let same: StringView = StringView.from_cstr("cx");
+    let other: StringView = StringView.from_cstr("c");
+
+    expect_true(StringView.equals(left, same));
+    expect_false(StringView.equals(left, other));
+    expect_eq_u64(StringView.hash(left), StringView.hash(same));
+}

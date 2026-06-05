@@ -1,0 +1,30 @@
+fn main() -> int {
+    let values: int[3] = { 1, 2, 3 };
+
+    let array_total = 0;
+    foreach item in values {
+        let copy = item;
+        array_total = array_total + copy;
+    }
+
+    let slice: Slice<int>;
+    slice.data = &values[0];
+    slice.length = 3;
+
+    let slice_total = 0;
+    let last_index: usize = 0;
+    foreach index, item in slice {
+        let inferred_item = item;
+        let inferred_index = index;
+        slice_total = slice_total + inferred_item;
+        last_index = inferred_index;
+    }
+
+    let range_last: usize = 0;
+    foreach i in 0..slice.length {
+        let inferred_i = i;
+        range_last = inferred_i;
+    }
+
+    return (array_total - 6) + (slice_total - 6) + ((int)last_index - 2) + ((int)range_last - 2);
+}

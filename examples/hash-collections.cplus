@@ -1,0 +1,66 @@
+fn main() -> int {
+    let set: HashSet<int> = HashSet<int>.with_capacity(4);
+    set.add(10);
+    set.add(20);
+    set.remove(10);
+
+    let map: HashMap<int, int> = HashMap<int, int>.with_capacity(4);
+    map.put(2, 40);
+    map.put(2, 50);
+    map.put(3, 70);
+
+    let value: Option<int> = map.get(2);
+    let result: int = value.value + set.contains(20) + map.contains(3);
+
+    let buffer: u8[512] = { 0 };
+    let fixed: FixedBufferAllocator = FixedBufferAllocator.from_buffer(&buffer[0], 512);
+    let fixed_allocator: Allocator = fixed;
+    let local_map: HashMap<int, int> = HashMap<int, int>.with_allocator(&fixed_allocator, 4);
+    local_map.put(7, 80);
+    local_map.put(8, 90);
+    let local_value: Option<int> = local_map.get(8);
+    let local_result: int = local_value.value + local_map.contains(7);
+
+    let local_set: HashSet<int> = HashSet<int>.with_allocator(&fixed_allocator, 4);
+    local_set.add(30);
+    local_set.add(40);
+    local_set.remove(30);
+    let local_set_result: int = local_set.contains(40);
+
+    let route_map: HashMap<StringView, int> = HashMap<StringView, int>.with_capacity(4);
+    route_map.put(StringView.from_cstr("/"), 1);
+    route_map.put(StringView.from_cstr("/health"), 2);
+    let route_value: Option<int> = route_map.get(StringView.from_cstr("/health"));
+    let route_result: int = route_value.value + route_map.contains(StringView.from_cstr("/"));
+
+    let route_set: HashSet<StringView> = HashSet<StringView>.with_capacity(4);
+    route_set.add(StringView.from_cstr("/admin"));
+    route_set.add(StringView.from_cstr("/health"));
+    route_set.remove(StringView.from_cstr("/admin"));
+    let route_set_result: int = route_set.contains(StringView.from_cstr("/health"));
+
+    let set_total: int = 0;
+    foreach item in set {
+        set_total = set_total + item;
+    }
+
+    let map_total: int = 0;
+    foreach key => item in map {
+        map_total = map_total + key + item;
+    }
+
+    set.free();
+    map.free();
+    local_map.free();
+    local_set.free();
+    route_map.free();
+    route_set.free();
+    return result
+        + local_result
+        + local_set_result
+        + route_result
+        + route_set_result
+        + set_total
+        + map_total
+        - 293;
+}

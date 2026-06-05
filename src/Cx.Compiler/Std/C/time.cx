@@ -1,0 +1,22 @@
+module c.time;
+
+declare <time.h> {
+    type time_t = opaque;
+    type clock_t = opaque;
+    type tm = opaque;
+    type size_t = usize;
+
+    macro const CLOCKS_PER_SEC: clock_t;
+
+    fn clock() -> clock_t;
+    fn time(result: time_t*) -> time_t;
+    fn difftime(end_time: time_t, start_time: time_t) -> double;
+
+    fn localtime(time_value: const time_t*) -> tm*;
+    fn gmtime(time_value: const time_t*) -> tm*;
+    fn mktime(time_ptr: tm*) -> time_t;
+
+    fn asctime(time_ptr: const tm*) -> char*;
+    fn ctime(time_value: const time_t*) -> char*;
+    fn strftime(buffer: char*, count: size_t, format: const char*, time_ptr: const tm*) -> size_t;
+}

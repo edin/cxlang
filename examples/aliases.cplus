@@ -1,0 +1,10 @@
+type String = char*;
+
+type IntList = Vec<int>;
+
+fn main() -> int {
+    let name: String = "cplus";
+    let numbers: IntList;
+    numbers.length = 0;
+    return numbers.length;
+}

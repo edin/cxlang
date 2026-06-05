@@ -1,0 +1,14 @@
+fn main() -> int {
+    let queue: PriorityQueue<int> = PriorityQueue<int>.with_capacity(4);
+    queue.push(10);
+    queue.push(30);
+    queue.push(20);
+
+    let first: Option<int> = queue.pop();
+    let second: Option<int> = queue.pop();
+    let third: Option<int> = queue.pop();
+    let empty: bool = queue.is_empty();
+
+    queue.free();
+    return first.value + second.value + third.value + empty - 61;
+}

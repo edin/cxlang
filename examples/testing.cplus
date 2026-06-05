@@ -1,0 +1,32 @@
+fn test_string_trim(test: TestRunner*) -> void {
+    test.begin("string trim");
+
+    let text: StringView = StringView.from_cstr(" hi ");
+    let trimmed: StringView = text.trim();
+
+    test.expect_u64((u64)2, trimmed.length, "trimmed length");
+    test.expect_string_view(StringView.from_cstr("hi"), trimmed, "trimmed value");
+
+    test.end();
+}
+
+fn test_parse_int(test: TestRunner*) -> void {
+    test.begin("parse int");
+
+    let text: StringView = StringView.from_cstr("42");
+    let value: Option<int> = text.parse_int();
+
+    test.expect_bool(true, value.has_value, "parsed value presence");
+    test.expect_int(42, value.value, "parsed value");
+
+    test.end();
+}
+
+fn main() -> int {
+    let test: TestRunner = TestRunner.create();
+
+    test_string_trim(&test);
+    test_parse_int(&test);
+
+    return test.result();
+}

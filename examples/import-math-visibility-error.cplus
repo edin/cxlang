@@ -1,0 +1,4 @@
+fn main() -> int {
+    let value: double = sqrt(9.0);
+    return (int)value;
+}

@@ -1,0 +1,13 @@
+fn main() -> int {
+    let bag: Bag<int> = Bag<int>.with_capacity(4);
+    bag.add(10);
+    bag.add(20);
+    bag.add(30);
+
+    let removed: Option<int> = bag.remove_at(1);
+    let last: Option<int> = bag.last();
+    let length: usize = bag.length;
+
+    bag.free();
+    return removed.value + last.value + (int)length - 52;
+}

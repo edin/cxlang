@@ -1,0 +1,33 @@
+fn make_buffer_result(ok: bool) -> Result<ByteBuffer, ByteBuffer> {
+    if (ok) {
+        let value: ByteBuffer = ByteBuffer.with_capacity(4);
+        return Result.ok<ByteBuffer, ByteBuffer>(value);
+    }
+
+    let error: ByteBuffer = ByteBuffer.with_capacity(4);
+    return Result.err<ByteBuffer, ByteBuffer>(error);
+}
+
+fn main() -> int {
+    let good: Result<ByteBuffer, ByteBuffer> = make_buffer_result(true);
+    if (!good.is_ok()) {
+        return 1;
+    }
+
+    good.free();
+    if (good.has_value) {
+        return 2;
+    }
+
+    let bad: Result<ByteBuffer, ByteBuffer> = make_buffer_result(false);
+    if (!bad.is_error()) {
+        return 3;
+    }
+
+    bad.free();
+    if (bad.has_value) {
+        return 4;
+    }
+
+    return 0;
+}

@@ -1,0 +1,32 @@
+declare <stdio.h> {
+    type FILE = opaque;
+
+    macro const SEEK_END: int;
+
+    fn printf(format: const char*, ...) -> int;
+    fn fopen(path: const char*, mode: const char*) -> FILE*;
+    fn fclose(stream: FILE*) -> int;
+    fn fseek(stream: FILE*, offset: long, origin: int) -> int;
+}
+
+declare "c-macros.h" {
+    macro fn CX_MAX<T>(left: T, right: T) -> T;
+    macro fn CX_DISCARD(value: any) -> void;
+}
+
+fn add(left: int, right: int) -> int {
+    return left + right;
+}
+
+fn main() -> int {
+    let file: FILE* = fopen("missing-file.txt", "rb");
+    if (file != null) {
+        fseek(file, 0, SEEK_END);
+        fclose(file);
+    }
+
+    let op: fn(int, int) -> int = add;
+    CX_DISCARD("unchecked");
+    printf("max=%d op=%d\n", CX_MAX<int>(2, 3), op(1, 2));
+    return 0;
+}

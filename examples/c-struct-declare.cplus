@@ -1,0 +1,15 @@
+declare "c-point.h" {
+    struct CPoint {
+        x: int;
+        y: int;
+    }
+}
+
+fn sum(point: CPoint) -> int {
+    return point.x + point.y;
+}
+
+fn main() -> int {
+    let point: CPoint = CPoint { x: 21, y: 21 };
+    return sum(point) - 42;
+}

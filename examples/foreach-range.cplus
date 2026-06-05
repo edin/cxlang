@@ -1,0 +1,13 @@
+fn main() -> int {
+    let values: int[3] = { 3, 4, 5 };
+    let range: Range<int>;
+    range.start = &values[0];
+    range.end = &values[0] + 3;
+
+    let total: int = 0;
+    foreach index, item in range {
+        total = total + index + item;
+    }
+
+    return total - 15;
+}

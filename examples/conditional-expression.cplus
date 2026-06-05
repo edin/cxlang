@@ -1,0 +1,11 @@
+import c.stdio;
+
+fn main() -> int {
+    let a: int = 3;
+    let b: int = 7;
+    let max: int = a > b ? a : b;
+    let label: char* = max == b ? "right" : "left";
+    let nested: int = a == b ? 0 : a < b ? -1 : 1;
+    printf("max=%d label=%s nested=%d\n", max, label, nested);
+    return 0;
+}

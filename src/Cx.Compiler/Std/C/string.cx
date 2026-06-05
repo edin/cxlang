@@ -1,0 +1,26 @@
+module c.string;
+
+declare <string.h> {
+    type size_t = usize;
+
+    fn memcpy(dest: void*, src: const void*, count: size_t) -> void*;
+    fn memmove(dest: void*, src: const void*, count: size_t) -> void*;
+    fn memset(dest: void*, ch: int, count: size_t) -> void*;
+    fn memcmp(left: const void*, right: const void*, count: size_t) -> int;
+    fn memchr(ptr: const void*, ch: int, count: size_t) -> void*;
+
+    fn strcpy(dest: char*, src: const char*) -> char*;
+    fn strncpy(dest: char*, src: const char*, count: size_t) -> char*;
+    fn strcat(dest: char*, src: const char*) -> char*;
+    fn strncat(dest: char*, src: const char*, count: size_t) -> char*;
+    fn strcmp(left: const char*, right: const char*) -> int;
+    fn strncmp(left: const char*, right: const char*, count: size_t) -> int;
+    fn strlen(text: const char*) -> size_t;
+
+    fn strchr(text: const char*, ch: int) -> char*;
+    fn strrchr(text: const char*, ch: int) -> char*;
+    fn strstr(text: const char*, needle: const char*) -> char*;
+    fn strtok(text: char*, delimiters: const char*) -> char*;
+
+    fn strerror(error_number: int) -> char*;
+}

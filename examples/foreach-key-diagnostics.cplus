@@ -1,0 +1,17 @@
+struct ValueIterable {
+    data: int*;
+    length: usize;
+}
+
+fn main() -> int {
+    let data: int[1] = { 1 };
+    let values: ValueIterable;
+    values.data = &data[0];
+    values.length = 1;
+
+    foreach key => value in values {
+        value = value;
+    }
+
+    return 0;
+}

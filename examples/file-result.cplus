@@ -1,0 +1,30 @@
+fn main() -> int {
+    let path: const char* = "build/file-result-sample.txt";
+    if (!File.write_text(path, "result file\n")) {
+        return 1;
+    }
+
+    let loaded: Result<ByteBuffer, FileError> = File.read_all_result(path);
+    if (!loaded.is_ok()) {
+        return 2;
+    }
+
+    let text: StringView = StringView.from_bytes(loaded.value.data, loaded.value.length);
+    if (!text.equals_cstr("result file\n")) {
+        loaded.free();
+        return 3;
+    }
+
+    loaded.free();
+    if (loaded.has_value) {
+        return 4;
+    }
+
+    let missing: Result<ByteBuffer, FileError> = File.read_all_result("build/does-not-exist.cx");
+    if (!missing.is_error() || missing.error != FileError.OpenFailed) {
+        return 5;
+    }
+
+    File.remove(path);
+    return 0;
+}

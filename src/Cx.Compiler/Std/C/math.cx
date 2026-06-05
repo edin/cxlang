@@ -1,0 +1,34 @@
+module c.math;
+
+declare <math.h> {
+    link linux "m";
+
+    macro const HUGE_VAL: double;
+    macro const INFINITY: float;
+    macro const NAN: float;
+
+    fn fabs(value: double) -> double;
+    fn floor(value: double) -> double;
+    fn ceil(value: double) -> double;
+    fn trunc(value: double) -> double;
+    fn round(value: double) -> double;
+
+    fn sqrt(value: double) -> double;
+    fn cbrt(value: double) -> double;
+    fn pow(base: double, exponent: double) -> double;
+    fn exp(value: double) -> double;
+    fn log(value: double) -> double;
+    fn log10(value: double) -> double;
+
+    fn sin(value: double) -> double;
+    fn cos(value: double) -> double;
+    fn tan(value: double) -> double;
+    fn asin(value: double) -> double;
+    fn acos(value: double) -> double;
+    fn atan(value: double) -> double;
+    fn atan2(y: double, x: double) -> double;
+
+    fn fmod(left: double, right: double) -> double;
+    fn fmin(left: double, right: double) -> double;
+    fn fmax(left: double, right: double) -> double;
+}

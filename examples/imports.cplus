@@ -1,0 +1,9 @@
+module app.main;
+
+import c.math as math;
+from c.math import sqrt as square_root;
+
+fn main() -> int {
+    let x: double = square_root(9.0);
+    return 0;
+}

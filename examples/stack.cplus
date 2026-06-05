@@ -1,0 +1,13 @@
+fn main() -> int {
+    let stack: Stack<int> = Stack<int>.with_capacity(2);
+    stack.push(4);
+    stack.push(8);
+
+    let top: Option<int> = stack.peek();
+    let first: Option<int> = stack.pop();
+    let second: Option<int> = stack.pop();
+    let empty: bool = stack.is_empty();
+
+    stack.free();
+    return top.value + first.value + second.value + empty - 21;
+}

@@ -1,0 +1,31 @@
+fn main() -> int {
+    let builder: StringBuilder = StringBuilder.with_capacity(32);
+
+    builder.append_cstr("count=");
+    builder.append_int(42);
+    builder.append_cstr(" ok=");
+    builder.append_bool(true);
+    builder.append_cstr(" total=");
+    builder.append_u64((u64)9001);
+    builder.append_cstr(" pi=");
+    builder.append_double(3.5);
+    builder.append_newline();
+
+    let view: StringView = builder.as_view();
+    let ok: bool = view.length == 35
+        && view.data[0] == (char)99
+        && view.data[6] == (char)52
+        && view.data[7] == (char)50
+        && view.data[12] == (char)116
+        && view.data[23] == (char)57
+        && view.data[31] == (char)51
+        && view.data[32] == (char)46
+        && view.data[33] == (char)53
+        && view.data[34] == (char)10;
+
+    builder.null_terminate();
+    let terminated: bool = builder.data[builder.length - 1] == (u8)0;
+
+    builder.free();
+    return ok && terminated ? 0 : 1;
+}

@@ -1,0 +1,10 @@
+fn main() -> int {
+    let values: int[2] = { 1, 2 };
+
+    foreach index, const item in values {
+        index = 1;
+        item = 2;
+    }
+
+    return 0;
+}

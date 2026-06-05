@@ -1,0 +1,103 @@
+module std.core;
+
+type ByteBuffer using Vec<u8> {
+    expose static create -> Self;
+    expose static with_capacity -> Self;
+    expose static with_allocator -> Self;
+    expose free;
+    expose clear;
+    expose is_empty;
+    expose reserve;
+    expose add as write_u8;
+    expose push as push_u8;
+    expose pop;
+    expose as_slice;
+
+    fn write_bytes(data: u8*, length: usize) -> bool {
+        if (length == 0) {
+            return true;
+        }
+
+        if (self.length + length > self.capacity) {
+            let new_capacity: usize = self.capacity;
+            if (new_capacity == 0) {
+                new_capacity = 4;
+            }
+
+            while (new_capacity < self.length + length) {
+                new_capacity = new_capacity * 2;
+            }
+
+            let resized: u8* = (u8*)self.allocator.resize_bytes(
+                self.data,
+                self.capacity * sizeof(u8),
+                new_capacity * sizeof(u8));
+
+            if (resized == null) {
+                return false;
+            }
+
+            self.data = resized;
+            self.capacity = new_capacity;
+        }
+
+        let i: usize = 0;
+        while (i < length) {
+            self.data[self.length + i] = data[i];
+            i += 1;
+        }
+
+        self.length += length;
+        return true;
+    }
+
+    fn write_slice(slice: Slice<u8>) -> bool {
+        return self.write_bytes(slice.data, slice.length);
+    }
+}
+
+test "byte buffer writes bytes" {
+    let buffer: ByteBuffer = ByteBuffer.with_capacity(1);
+    expect_true(buffer.push_u8(65));
+    expect_true(buffer.push_u8(66));
+    expect_eq_usize((usize)2, buffer.length);
+    expect_eq_int(65, (int)buffer.data[0]);
+    expect_eq_int(66, (int)buffer.data[1]);
+
+    buffer.free();
+}
+
+test "byte buffer writes byte ranges and slices" {
+    let buffer: ByteBuffer = ByteBuffer.create();
+    let bytes: u8[3] = { 67, 68, 69 };
+    expect_true(buffer.write_bytes(&bytes[0], (usize)3));
+    expect_eq_usize((usize)3, buffer.length);
+
+    let slice: Slice<u8>;
+    slice.data = &bytes[1];
+    slice.length = 2;
+    expect_true(buffer.write_slice(slice));
+    expect_eq_usize((usize)5, buffer.length);
+    expect_eq_int(67, (int)buffer.data[0]);
+    expect_eq_int(68, (int)buffer.data[3]);
+    expect_eq_int(69, (int)buffer.data[4]);
+
+    let popped: Option<u8> = buffer.pop();
+    expect_true(popped.has_value);
+    expect_eq_int(69, (int)popped.value);
+    expect_eq_usize((usize)4, buffer.length);
+
+    buffer.clear();
+    expect_true(buffer.is_empty());
+    buffer.free();
+}
+
+test "byte buffer reserve and zero length write" {
+    let buffer: ByteBuffer = ByteBuffer.create();
+    expect_true(buffer.write_bytes(null, (usize)0));
+    expect_eq_usize((usize)0, buffer.length);
+    expect_true(buffer.reserve((usize)16));
+    expect(buffer.capacity >= 16);
+
+    buffer.free();
+}

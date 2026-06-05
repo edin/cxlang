@@ -1,0 +1,70 @@
+module c.stdint;
+
+declare <stdint.h> {
+    type int8_t = signed char;
+    type int16_t = short;
+    type int32_t = int;
+    type int64_t = long long;
+
+    type uint8_t = unsigned char;
+    type uint16_t = unsigned short;
+    type uint32_t = unsigned int;
+    type uint64_t = unsigned long long;
+
+    type int_least8_t = signed char;
+    type int_least16_t = short;
+    type int_least32_t = int;
+    type int_least64_t = long long;
+
+    type uint_least8_t = unsigned char;
+    type uint_least16_t = unsigned short;
+    type uint_least32_t = unsigned int;
+    type uint_least64_t = unsigned long long;
+
+    type int_fast8_t = int;
+    type int_fast16_t = int;
+    type int_fast32_t = int;
+    type int_fast64_t = long long;
+
+    type uint_fast8_t = unsigned int;
+    type uint_fast16_t = unsigned int;
+    type uint_fast32_t = unsigned int;
+    type uint_fast64_t = unsigned long long;
+
+    type intptr_t = long long;
+    type uintptr_t = unsigned long long;
+    type intmax_t = long long;
+    type uintmax_t = unsigned long long;
+
+    macro const INT8_MIN: int;
+    macro const INT16_MIN: int;
+    macro const INT32_MIN: int32_t;
+    macro const INT64_MIN: int64_t;
+
+    macro const INT8_MAX: int;
+    macro const INT16_MAX: int;
+    macro const INT32_MAX: int32_t;
+    macro const INT64_MAX: int64_t;
+
+    macro const UINT8_MAX: unsigned int;
+    macro const UINT16_MAX: unsigned int;
+    macro const UINT32_MAX: uint32_t;
+    macro const UINT64_MAX: uint64_t;
+
+    macro const INTPTR_MIN: intptr_t;
+    macro const INTPTR_MAX: intptr_t;
+    macro const UINTPTR_MAX: uintptr_t;
+
+    macro const INTMAX_MIN: intmax_t;
+    macro const INTMAX_MAX: intmax_t;
+    macro const UINTMAX_MAX: uintmax_t;
+
+    macro fn INT8_C(value: any) -> int8_t;
+    macro fn INT16_C(value: any) -> int16_t;
+    macro fn INT32_C(value: any) -> int32_t;
+    macro fn INT64_C(value: any) -> int64_t;
+    macro fn UINT8_C(value: any) -> uint8_t;
+    macro fn UINT16_C(value: any) -> uint16_t;
+    macro fn UINT32_C(value: any) -> uint32_t;
+    macro fn UINT64_C(value: any) -> uint64_t;
+}

@@ -1,0 +1,14 @@
+module std.core;
+
+type i8 = char;
+type i16 = short;
+type i32 = int;
+type i64 = long long;
+
+type u8 = unsigned char;
+type u16 = unsigned short;
+type u32 = unsigned int;
+type u64 = unsigned long long;
+
+type usize = unsigned long long;
+type bool = int;

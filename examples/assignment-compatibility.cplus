@@ -1,0 +1,41 @@
+import c.stdio;
+
+type IntVec = Vec<int>;
+
+extern fn puts(value: const char*) -> int;
+
+fn add(left: int, right: int) -> int {
+    return left + right;
+}
+
+fn identity<T>(value: T) -> T {
+    return value;
+}
+
+struct Box {
+    value: int;
+
+    static fn create(value: int) -> Box {
+        return Box { value: value };
+    }
+
+    fn get(self: Box*) -> int {
+        return self.value;
+    }
+}
+
+fn main() -> int {
+    let box: Box = Box.create(3);
+    let own: int = add(1, 2);
+    let generic: int = identity<int>(own);
+    let method: int = box.get();
+    let op: fn(int, int) -> int = add;
+    let write_line: fn(const char*) -> int = puts;
+
+    let alias_vec: IntVec = Vec<int>.create();
+    let direct_vec: Vec<int> = alias_vec;
+
+    write_line("assignment compatibility");
+    direct_vec.free<int>();
+    return op(generic, method) - 6;
+}

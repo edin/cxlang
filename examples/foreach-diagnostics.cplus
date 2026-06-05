@@ -1,0 +1,14 @@
+struct NotIterable {
+    value: int;
+}
+
+fn main() -> int {
+    let value: NotIterable;
+    value.value = 1;
+
+    foreach item in value {
+        item = item;
+    }
+
+    return 0;
+}

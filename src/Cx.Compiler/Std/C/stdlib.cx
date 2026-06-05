@@ -1,0 +1,39 @@
+module c.stdlib;
+
+declare <stdlib.h> {
+    type size_t = usize;
+
+    macro const EXIT_SUCCESS: int;
+    macro const EXIT_FAILURE: int;
+    macro const RAND_MAX: int;
+    macro const MB_CUR_MAX: int;
+
+    fn malloc(size: size_t) -> void*;
+    fn calloc(count: size_t, size: size_t) -> void*;
+    fn realloc(ptr: void*, new_size: size_t) -> void*;
+    fn free(ptr: void*) -> void;
+
+    fn abort() -> void;
+    fn exit(status: int) -> void;
+    fn atexit(callback: fn() -> void) -> int;
+
+    fn atoi(text: const char*) -> int;
+    fn atol(text: const char*) -> long;
+    fn atoll(text: const char*) -> long long;
+    fn atof(text: const char*) -> double;
+    fn strtol(text: const char*, end: char**, base: int) -> long;
+    fn strtoll(text: const char*, end: char**, base: int) -> long long;
+    fn strtoul(text: const char*, end: char**, base: int) -> unsigned long;
+    fn strtoull(text: const char*, end: char**, base: int) -> unsigned long long;
+    fn strtod(text: const char*, end: char**) -> double;
+
+    fn rand() -> int;
+    fn srand(seed: unsigned int) -> void;
+
+    fn abs(value: int) -> int;
+    fn labs(value: long) -> long;
+    fn llabs(value: long long) -> long long;
+
+    fn qsort(base: void*, count: size_t, size: size_t, compare: fn(const void*, const void*) -> int) -> void;
+    fn bsearch(key: const void*, base: const void*, count: size_t, size: size_t, compare: fn(const void*, const void*) -> int) -> void*;
+}

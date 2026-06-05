@@ -1,0 +1,46 @@
+struct IntIterator: Iterator<int> {
+    data: int*;
+    length: usize;
+    index: usize;
+}
+
+fn IntIterator.next(self: IntIterator*) -> bool {
+    if (self.index >= self.length) {
+        return false;
+    }
+
+    self.index = self.index + 1;
+    return true;
+}
+
+fn IntIterator.value(self: IntIterator*) -> int* {
+    return &self.data[self.index - 1];
+}
+
+struct IntBag: Iterable<int, IntIterator> {
+    ptr: int*;
+    count: usize;
+}
+
+fn IntBag.iterator(self: IntBag*) -> IntIterator {
+    let iterator: IntIterator;
+    iterator.data = self.ptr;
+    iterator.length = self.count;
+    iterator.index = 0;
+    return iterator;
+}
+
+fn main() -> int {
+    let data: int[3] = { 1, 2, 3 };
+    let bag: IntBag;
+    bag.ptr = &data[0];
+    bag.count = 3;
+
+    let total: int = 0;
+    foreach item in bag {
+        item = item + 1;
+        total = total + item;
+    }
+
+    return total - 9;
+}

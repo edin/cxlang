@@ -1,0 +1,26 @@
+include <math.h>;
+
+extern fn sqrt(x: double) -> double;
+
+struct Vec2 {
+    x: double;
+    y: double;
+}
+
+fn Vec2.length(self: Vec2*) -> double {
+    return sqrt(self.x * self.x + self.y * self.y);
+}
+
+fn make_vec2(x: double, y: double) -> Vec2 {
+    let value: Vec2;
+    value.x = x;
+    value.y = y;
+    return value;
+}
+
+fn main() -> int {
+    const scale: int = 1;
+    let v: Vec2 = make_vec2(3.0, 4.0);
+    let length: double = v.length();
+    return scale - 1;
+}

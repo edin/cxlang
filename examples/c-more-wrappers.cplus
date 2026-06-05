@@ -1,0 +1,21 @@
+import c.assert;
+import c.ctype;
+import c.errno;
+import c.stdio;
+import c.stdint;
+
+fn main() -> int {
+    let value: uint32_t = UINT32_C(42);
+    assert(value == 42);
+
+    let digit: int = isdigit('7');
+    let upper: int = toupper('a');
+
+    printf("value=%u digit=%d upper=%c errno=%d range=%d\n",
+        value,
+        digit != 0,
+        upper,
+        errno,
+        ERANGE);
+    return 0;
+}

@@ -1,0 +1,11 @@
+fn main() -> int {
+    let values: int[3] = { 4, 5, 6 };
+    let total: int = 0;
+
+    foreach index, item in values {
+        item = item + 1;
+        total = total + index + item;
+    }
+
+    return total - 21;
+}

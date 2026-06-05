@@ -1,0 +1,32 @@
+import c.stdio;
+
+fn compare_values(left: int, right: int, compare: fn(int, int) -> int) -> int {
+    return compare(left, right);
+}
+
+fn main() -> int {
+    let ascending: fn(int, int) -> int = fn(left: int, right: int) => left <=> right;
+    let descending: fn(int, int) -> int = fn(left: int, right: int) => right <=> left;
+    let abs_compare: fn(int, int) -> int = fn(left: int, right: int) -> int {
+        if (left < 0) {
+            left = -left;
+        }
+
+        if (right < 0) {
+            right = -right;
+        }
+
+        return left <=> right;
+    };
+
+    let a: int = ascending(2, 5);
+    let b: int = descending(2, 5);
+    let c: int = compare_values(10, 3, fn(left: int, right: int) -> int => left <=> right);
+    let d: int = abs_compare(-10, 3);
+    let e: int = compare_values(3, 10, fn(left: int, right: int) -> int {
+        return right <=> left;
+    });
+
+    printf("ascending=%d descending=%d direct=%d abs=%d block=%d\n", a, b, c, d, e);
+    return 0;
+}

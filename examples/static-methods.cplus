@@ -1,0 +1,12 @@
+static fn Vec.empty() -> Vec<int> {
+    let values: Vec<int>;
+    values.data = null;
+    values.length = 0;
+    values.capacity = 0;
+    return values;
+}
+
+fn main() -> int {
+    let values: Vec<int> = Vec.empty();
+    return values.length;
+}

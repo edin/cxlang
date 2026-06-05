@@ -1,0 +1,121 @@
+module std.router;
+
+import std.core;
+
+struct RouteParam {
+    name: StringView;
+    value: StringView;
+}
+
+struct RouteContext<TRequest> {
+    request: TRequest*;
+    params: RouteParam[8];
+    paramCount: usize;
+
+    fn param<TRequest>(self: RouteContext<TRequest>*, name: const char*) -> Option<StringView> {
+        for (let i: usize = 0; i < self.paramCount; i += 1) {
+            if (StringView.equals_cstr(&self.params[i].name, name)) {
+                return Option.some<StringView>(self.params[i].value);
+            }
+        }
+
+        return Option.none<StringView>();
+    }
+}
+
+struct RouterRoute<TRequest, TResponse> {
+    method: StringView;
+    path: StringView;
+    handler: fn(RouteContext<TRequest>*) -> TResponse;
+}
+
+struct Router<TRequest, TResponse> {
+    routes: RouterRoute<TRequest, TResponse>[32];
+    length: usize;
+
+    static fn create<TRequest, TResponse>() -> Router<TRequest, TResponse> {
+        let router: Router<TRequest, TResponse>;
+        router.length = 0;
+        return router;
+    }
+
+    fn get<TRequest, TResponse>(self: Router<TRequest, TResponse>*, path: const char*, handler: fn(RouteContext<TRequest>*) -> TResponse) -> bool {
+        return self.add<TRequest, TResponse>("GET", path, handler);
+    }
+
+    fn add<TRequest, TResponse>(self: Router<TRequest, TResponse>*, method: const char*, path: const char*, handler: fn(RouteContext<TRequest>*) -> TResponse) -> bool {
+        if (self.length >= 32) {
+            return false;
+        }
+
+        self.routes[self.length].method = StringView.from_cstr(method);
+        self.routes[self.length].path = StringView.from_cstr(path);
+        self.routes[self.length].handler = handler;
+        self.length += 1;
+        return true;
+    }
+
+    fn dispatch<TRequest, TResponse>(self: Router<TRequest, TResponse>*, method: StringView, path: StringView, request: TRequest*) -> Option<TResponse> {
+        for (let i: usize = 0; i < self.length; i += 1) {
+            let route: RouterRoute<TRequest, TResponse>* = &self.routes[i];
+            let context: RouteContext<TRequest>;
+            context.request = request;
+            context.paramCount = 0;
+
+            if (StringView.equals(route.method, method) && Router.match_path<TRequest, TResponse>(&route.path, &path, &context)) {
+                return Option.some<TResponse>(route.handler(&context));
+            }
+        }
+
+        return Option.none<TResponse>();
+    }
+
+    static fn match_path<TRequest, TResponse>(pattern: StringView*, path: StringView*, context: RouteContext<TRequest>*) -> bool {
+        let patternIndex: usize = 0;
+        let pathIndex: usize = 0;
+
+        while (patternIndex < pattern.length && pathIndex < path.length) {
+            if (pattern.data[patternIndex] == 47) {
+                if (path.data[pathIndex] != 47) {
+                    return false;
+                }
+
+                patternIndex += 1;
+                pathIndex += 1;
+                continue;
+            }
+
+            let patternStart: usize = patternIndex;
+            while (patternIndex < pattern.length && pattern.data[patternIndex] != 47) {
+                patternIndex += 1;
+            }
+
+            let pathStart: usize = pathIndex;
+            while (pathIndex < path.length && path.data[pathIndex] != 47) {
+                pathIndex += 1;
+            }
+
+            let patternLength: usize = patternIndex - patternStart;
+            let pathLength: usize = pathIndex - pathStart;
+
+            if (patternLength >= 3 && pattern.data[patternStart] == 123 && pattern.data[patternIndex - 1] == 125) {
+                if (context.paramCount >= 8) {
+                    return false;
+                }
+
+                context.params[context.paramCount].name = StringView.from_parts(pattern.data + patternStart + 1, patternLength - 2);
+                context.params[context.paramCount].value = StringView.from_parts(path.data + pathStart, pathLength);
+                context.paramCount += 1;
+                continue;
+            }
+
+            let patternSegment: StringView = StringView.from_parts(pattern.data + patternStart, patternLength);
+            let pathSegment: StringView = StringView.from_parts(path.data + pathStart, pathLength);
+            if (!patternSegment.is_equal(pathSegment)) {
+                return false;
+            }
+        }
+
+        return patternIndex == pattern.length && pathIndex == path.length;
+    }
+}

@@ -1,0 +1,446 @@
+module std.core;
+
+struct JsonWriter {
+    builder: StringBuilder;
+    depth: usize;
+    needs_comma: bool[32];
+    container_kind: int[32];
+    expecting_value: bool;
+    failed: bool;
+
+    static fn with_capacity(capacity: usize) -> JsonWriter {
+        let result: JsonWriter;
+        result.builder = StringBuilder.with_capacity(capacity);
+        result.depth = 0;
+        result.expecting_value = false;
+        result.failed = false;
+
+        let i: usize = 0;
+        while (i < 32) {
+            result.needs_comma[i] = false;
+            result.container_kind[i] = 0;
+            i += 1;
+        }
+
+        return result;
+    }
+
+    static fn create() -> JsonWriter {
+        return JsonWriter.with_capacity(0);
+    }
+
+    fn free() -> void {
+        let builder: StringBuilder* = &self.builder;
+        builder.free();
+        self.depth = 0;
+        self.expecting_value = false;
+        self.failed = false;
+    }
+
+    fn clear() -> void {
+        let builder: StringBuilder* = &self.builder;
+        builder.clear();
+        self.depth = 0;
+        self.expecting_value = false;
+        self.failed = false;
+
+        let i: usize = 0;
+        while (i < 32) {
+            self.needs_comma[i] = false;
+            self.container_kind[i] = 0;
+            i += 1;
+        }
+    }
+
+    fn as_view() -> StringView {
+        let builder: StringBuilder* = &self.builder;
+        return builder.as_view();
+    }
+
+    fn null_terminate() -> bool {
+        let builder: StringBuilder* = &self.builder;
+        return builder.null_terminate();
+    }
+
+    fn ok() -> bool {
+        return !self.failed && !self.expecting_value && self.depth == 0;
+    }
+
+    fn has_error() -> bool {
+        return self.failed;
+    }
+
+    fn reset_error() -> void {
+        self.failed = false;
+    }
+
+    fn fail() -> bool {
+        self.failed = true;
+        return false;
+    }
+
+    fn write_value_prefix() -> bool {
+        let builder: StringBuilder* = &self.builder;
+        if (self.failed) {
+            return false;
+        }
+
+        if (self.expecting_value) {
+            self.expecting_value = false;
+            if (self.depth > 0) {
+                self.needs_comma[self.depth - 1] = true;
+            }
+
+            return true;
+        }
+
+        if (self.depth > 0) {
+            let index: usize = self.depth - 1;
+            if (self.container_kind[index] == 1) {
+                return self.fail();
+            }
+
+            if (self.needs_comma[index]) {
+                if (!builder.append_char((char)44)) {
+                    return self.fail();
+                }
+            }
+
+            self.needs_comma[index] = true;
+        }
+
+        return true;
+    }
+
+    fn begin_object() -> bool {
+        let builder: StringBuilder* = &self.builder;
+        if (self.failed) {
+            return false;
+        }
+
+        if (self.depth >= 32) {
+            return self.fail();
+        }
+
+        if (!self.write_value_prefix()) {
+            return false;
+        }
+
+        if (!builder.append_char((char)123)) {
+            return self.fail();
+        }
+
+        self.needs_comma[self.depth] = false;
+        self.container_kind[self.depth] = 1;
+        self.depth += 1;
+        return true;
+    }
+
+    fn end_object() -> bool {
+        let builder: StringBuilder* = &self.builder;
+        if (self.failed) {
+            return false;
+        }
+
+        if (self.depth == 0 || self.expecting_value) {
+            return self.fail();
+        }
+
+        if (self.container_kind[self.depth - 1] != 1) {
+            return self.fail();
+        }
+
+        self.depth -= 1;
+        self.container_kind[self.depth] = 0;
+        if (!builder.append_char((char)125)) {
+            return self.fail();
+        }
+
+        return true;
+    }
+
+    fn begin_array() -> bool {
+        let builder: StringBuilder* = &self.builder;
+        if (self.failed) {
+            return false;
+        }
+
+        if (self.depth >= 32) {
+            return self.fail();
+        }
+
+        if (!self.write_value_prefix()) {
+            return false;
+        }
+
+        if (!builder.append_char((char)91)) {
+            return self.fail();
+        }
+
+        self.needs_comma[self.depth] = false;
+        self.container_kind[self.depth] = 2;
+        self.depth += 1;
+        return true;
+    }
+
+    fn end_array() -> bool {
+        let builder: StringBuilder* = &self.builder;
+        if (self.failed) {
+            return false;
+        }
+
+        if (self.depth == 0 || self.expecting_value) {
+            return self.fail();
+        }
+
+        if (self.container_kind[self.depth - 1] != 2) {
+            return self.fail();
+        }
+
+        self.depth -= 1;
+        self.container_kind[self.depth] = 0;
+        if (!builder.append_char((char)93)) {
+            return self.fail();
+        }
+
+        return true;
+    }
+
+    fn comma() -> bool {
+        let builder: StringBuilder* = &self.builder;
+        return builder.append_char((char)44);
+    }
+
+    fn colon() -> bool {
+        let builder: StringBuilder* = &self.builder;
+        return builder.append_char((char)58);
+    }
+
+    fn write_null() -> bool {
+        let builder: StringBuilder* = &self.builder;
+        if (!self.write_value_prefix()) {
+            return false;
+        }
+
+        if (!builder.append_cstr("null")) {
+            return self.fail();
+        }
+
+        return true;
+    }
+
+    fn write_bool(value: bool) -> bool {
+        let builder: StringBuilder* = &self.builder;
+        if (!self.write_value_prefix()) {
+            return false;
+        }
+
+        if (!builder.append_bool(value)) {
+            return self.fail();
+        }
+
+        return true;
+    }
+
+    fn write_int(value: int) -> bool {
+        let builder: StringBuilder* = &self.builder;
+        if (!self.write_value_prefix()) {
+            return false;
+        }
+
+        if (!builder.append_int(value)) {
+            return self.fail();
+        }
+
+        return true;
+    }
+
+    fn write_u64(value: u64) -> bool {
+        let builder: StringBuilder* = &self.builder;
+        if (!self.write_value_prefix()) {
+            return false;
+        }
+
+        if (!builder.append_u64(value)) {
+            return self.fail();
+        }
+
+        return true;
+    }
+
+    fn write_double(value: double) -> bool {
+        let builder: StringBuilder* = &self.builder;
+        if (!self.write_value_prefix()) {
+            return false;
+        }
+
+        if (!builder.append_double(value)) {
+            return self.fail();
+        }
+
+        return true;
+    }
+
+    fn write_escaped_string(value: StringView) -> bool {
+        let builder: StringBuilder* = &self.builder;
+        if (self.failed) {
+            return false;
+        }
+
+        if (!builder.append_char((char)34)) {
+            return self.fail();
+        }
+
+        let i: usize = 0;
+        while (i < value.length) {
+            let ch: char = value.data[i];
+            if (ch == (char)34) {
+                if (!builder.append_cstr("\\\"")) {
+                    return self.fail();
+                }
+            } else if (ch == (char)92) {
+                if (!builder.append_cstr("\\\\")) {
+                    return self.fail();
+                }
+            } else if (ch == (char)10) {
+                if (!builder.append_cstr("\\n")) {
+                    return self.fail();
+                }
+            } else if (ch == (char)13) {
+                if (!builder.append_cstr("\\r")) {
+                    return self.fail();
+                }
+            } else if (ch == (char)9) {
+                if (!builder.append_cstr("\\t")) {
+                    return self.fail();
+                }
+            } else {
+                if (!builder.append_char(ch)) {
+                    return self.fail();
+                }
+            }
+
+            i += 1;
+        }
+
+        if (!builder.append_char((char)34)) {
+            return self.fail();
+        }
+
+        return true;
+    }
+
+    fn write_string(value: StringView) -> bool {
+        if (!self.write_value_prefix()) {
+            return false;
+        }
+
+        return self.write_escaped_string(value);
+    }
+
+    fn write_string_cstr(value: const char*) -> bool {
+        return self.write_string(StringView.from_cstr(value));
+    }
+
+    fn name(value: StringView) -> bool {
+        let builder: StringBuilder* = &self.builder;
+        if (self.failed) {
+            return false;
+        }
+
+        if (self.depth == 0 || self.expecting_value) {
+            return self.fail();
+        }
+
+        if (self.container_kind[self.depth - 1] != 1) {
+            return self.fail();
+        }
+
+        let index: usize = self.depth - 1;
+        if (self.needs_comma[index]) {
+            if (!builder.append_char((char)44)) {
+                return self.fail();
+            }
+        }
+
+        self.needs_comma[index] = true;
+        if (!self.write_escaped_string(value)) {
+            return false;
+        }
+
+        if (!builder.append_char((char)58)) {
+            return self.fail();
+        }
+
+        self.expecting_value = true;
+        return true;
+    }
+
+    fn name_cstr(value: const char*) -> bool {
+        return self.name(StringView.from_cstr(value));
+    }
+
+    fn field(value: StringView) -> bool {
+        return self.name(value);
+    }
+
+    fn field_cstr(value: const char*) -> bool {
+        return self.name_cstr(value);
+    }
+}
+
+test "json writer writes object and array" {
+    let json: JsonWriter = JsonWriter.with_capacity((usize)128);
+    expect_true(json.begin_object());
+    expect_true(json.name_cstr("name"));
+    expect_true(json.write_string_cstr("CX"));
+    expect_true(json.name_cstr("count"));
+    expect_true(json.write_int(42));
+    expect_true(json.name_cstr("ok"));
+    expect_true(json.write_bool(true));
+    expect_true(json.name_cstr("items"));
+    expect_true(json.begin_array());
+    expect_true(json.write_int(1));
+    expect_true(json.write_int(2));
+    expect_true(json.write_int(3));
+    expect_true(json.end_array());
+    expect_true(json.end_object());
+    expect_true(json.ok());
+
+    let view: StringView = json.as_view();
+    expect_eq_string_view(StringView.from_cstr("{\"name\":\"CX\",\"count\":42,\"ok\":true,\"items\":[1,2,3]}"), view);
+
+    json.free();
+}
+
+test "json writer escapes strings" {
+    let json: JsonWriter = JsonWriter.create();
+    expect_true(json.write_string_cstr("quote \" slash \\ line\n"));
+    expect_true(json.ok());
+
+    let view: StringView = json.as_view();
+    expect_eq_string_view(StringView.from_cstr("\"quote \\\" slash \\\\ line\\n\""), view);
+
+    json.free();
+}
+
+test "json writer reports invalid state" {
+    let name_in_array: JsonWriter = JsonWriter.with_capacity((usize)16);
+    expect_true(name_in_array.begin_array());
+    expect_false(name_in_array.name_cstr("bad"));
+    expect_true(name_in_array.has_error());
+    expect_false(name_in_array.write_int(1));
+    name_in_array.free();
+
+    let value_without_name: JsonWriter = JsonWriter.with_capacity((usize)16);
+    expect_true(value_without_name.begin_object());
+    expect_false(value_without_name.write_int(1));
+    expect_true(value_without_name.has_error());
+    value_without_name.free();
+
+    let wrong_close: JsonWriter = JsonWriter.with_capacity((usize)16);
+    expect_true(wrong_close.begin_array());
+    expect_false(wrong_close.end_object());
+    expect_true(wrong_close.has_error());
+    wrong_close.free();
+}

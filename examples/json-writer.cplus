@@ -1,0 +1,80 @@
+fn main() -> int {
+    let json: JsonWriter = JsonWriter.with_capacity(128);
+
+    json.begin_object();
+    json.name_cstr("name");
+    json.write_string_cstr("CX");
+    json.name_cstr("count");
+    json.write_int(42);
+    json.name_cstr("ok");
+    json.write_bool(true);
+    json.name_cstr("escaped");
+    json.write_string_cstr("quote \" slash \\ line\n");
+    json.name_cstr("items");
+    json.begin_array();
+    json.write_int(1);
+    json.write_int(2);
+    json.write_int(3);
+    json.end_array();
+    json.end_object();
+
+    let view: StringView = json.as_view();
+    let ok: bool = view.length == 87
+        && view.data[0] == (char)123
+        && view.data[1] == (char)34
+        && view.data[2] == (char)110
+        && view.data[9] == (char)67
+        && view.data[10] == (char)88
+        && view.data[21] == (char)52
+        && view.data[22] == (char)50
+        && view.data[29] == (char)116
+        && view.data[32] == (char)101
+        && view.data[51] == (char)92
+        && view.data[52] == (char)34
+        && view.data[60] == (char)92
+        && view.data[61] == (char)92
+        && view.data[67] == (char)92
+        && view.data[68] == (char)110
+        && view.data[70] == (char)44
+        && view.data[79] == (char)91
+        && view.data[80] == (char)49
+        && view.data[81] == (char)44
+        && view.data[82] == (char)50
+        && view.data[83] == (char)44
+        && view.data[84] == (char)51
+        && view.data[85] == (char)93
+        && view.data[86] == (char)125
+        && json.ok();
+
+    json.free();
+
+    let invalid_name: JsonWriter = JsonWriter.with_capacity(16);
+    invalid_name.begin_array();
+    let name_in_array: bool = invalid_name.name_cstr("bad");
+    let write_after_error: bool = invalid_name.write_int(1);
+    let name_error: bool = invalid_name.has_error();
+    invalid_name.free();
+
+    let invalid_value: JsonWriter = JsonWriter.with_capacity(16);
+    invalid_value.begin_object();
+    let value_without_name: bool = invalid_value.write_int(1);
+    let value_error: bool = invalid_value.has_error();
+    invalid_value.free();
+
+    let invalid_close: JsonWriter = JsonWriter.with_capacity(16);
+    invalid_close.begin_array();
+    let close_wrong_kind: bool = invalid_close.end_object();
+    let close_error: bool = invalid_close.has_error();
+    invalid_close.free();
+
+    return ok
+        && !name_in_array
+        && !write_after_error
+        && name_error
+        && !value_without_name
+        && value_error
+        && !close_wrong_kind
+        && close_error
+        ? 0
+        : 1;
+}

@@ -1,0 +1,38 @@
+enum SurfaceType {
+    SHINY_SURFACE,
+    CHECKERBOARD_SURFACE
+}
+
+enum ObjectType {
+    SPHERE = 1,
+    PLANE = 2
+}
+
+struct Thing {
+    type: ObjectType;
+}
+
+fn classify(thing: Thing*) -> int {
+    switch (thing.type) {
+        case SPHERE: {
+            return 10;
+        }
+        case PLANE: {
+            return 20;
+        }
+        default: {
+            return 30;
+        }
+    }
+}
+
+fn read_local_pointer(thing: Thing*) -> int {
+    let local: Thing* = thing;
+    return local.type;
+}
+
+fn main() -> int {
+    let thing: Thing;
+    thing.type = PLANE;
+    return classify(&thing) + read_local_pointer(&thing) - 22;
+}

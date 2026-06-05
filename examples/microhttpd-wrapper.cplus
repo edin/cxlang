@@ -1,0 +1,260 @@
+include <microhttpd.h>;
+import c.stdio;
+include <string.h>;
+
+struct HttpRequest {
+    url: const char*;
+    method: const char*;
+    version: const char*;
+    raw: struct MHD_Connection*;
+}
+
+struct HttpResponse {
+    status: int;
+    body: const char*;
+    contentType: const char*;
+
+    static fn text(body: const char*) -> HttpResponse {
+        return HttpResponse {
+            status: MHD_HTTP_OK,
+            body: body,
+            contentType: "text/plain; charset=utf-8"
+        };
+    }
+
+    static fn not_found(body: const char*) -> HttpResponse {
+        return HttpResponse {
+            status: MHD_HTTP_NOT_FOUND,
+            body: body,
+            contentType: "text/plain; charset=utf-8"
+        };
+    }
+}
+
+struct HttpRouteParam {
+    name: StringView;
+    value: StringView;
+}
+
+struct HttpContext {
+    request: HttpRequest*;
+    params: HttpRouteParam[8];
+    paramCount: usize;
+    response: HttpResponse;
+
+    fn param(self: HttpContext*, name: const char*) -> StringView {
+        for (let i: usize = 0; i < self.paramCount; i += 1) {
+            if (StringView.equals_cstr(&self.params[i].name, name)) {
+                return self.params[i].value;
+            }
+        }
+
+        return StringView.empty();
+    }
+
+    fn text(self: HttpContext*, body: const char*) -> void {
+        self.response = HttpResponse.text(body);
+    }
+}
+
+struct HttpRoute {
+    method: StringView;
+    path: StringView;
+    handler: fn(HttpContext*) -> void;
+}
+
+struct HttpServer {
+    port: u16;
+    daemon: struct MHD_Daemon*;
+    routes: HttpRoute[32];
+    routeCount: usize;
+
+    static fn create(port: u16) -> HttpServer {
+        let server: HttpServer;
+        server.port = port;
+        server.daemon = null;
+        server.routeCount = 0;
+        return server;
+    }
+
+    fn get(self: HttpServer*, path: const char*, handler: fn(HttpContext*) -> void) -> bool {
+        return self.add("GET", path, handler);
+    }
+
+    fn post(self: HttpServer*, path: const char*, handler: fn(HttpContext*) -> void) -> bool {
+        return self.add("POST", path, handler);
+    }
+
+    fn add(self: HttpServer*, method: const char*, path: const char*, handler: fn(HttpContext*) -> void) -> bool {
+        if (self.routeCount >= 32) {
+            return false;
+        }
+
+        self.routes[self.routeCount].method = StringView.from_cstr(method);
+        self.routes[self.routeCount].path = StringView.from_cstr(path);
+        self.routes[self.routeCount].handler = handler;
+        self.routeCount += 1;
+        return true;
+    }
+
+    fn start(self: HttpServer*) -> bool {
+        self.daemon = MHD_start_daemon(
+            MHD_USE_INTERNAL_POLLING_THREAD,
+            self.port,
+            null,
+            null,
+            &http_server_dispatch,
+            self,
+            MHD_OPTION_END
+        );
+
+        return self.daemon != null;
+    }
+
+    fn stop(self: HttpServer*) -> void {
+        if (self.daemon != null) {
+            MHD_stop_daemon(self.daemon);
+            self.daemon = null;
+        }
+    }
+
+    static fn match_path(pattern: StringView*, path: StringView*, ctx: HttpContext*) -> bool {
+        let patternIndex: usize = 0;
+        let pathIndex: usize = 0;
+
+        while (patternIndex < pattern.length && pathIndex < path.length) {
+            if (pattern.data[patternIndex] == 47) {
+                if (path.data[pathIndex] != 47) {
+                    return false;
+                }
+
+                patternIndex += 1;
+                pathIndex += 1;
+                continue;
+            }
+
+            let patternStart: usize = patternIndex;
+            while (patternIndex < pattern.length && pattern.data[patternIndex] != 47) {
+                patternIndex += 1;
+            }
+
+            let pathStart: usize = pathIndex;
+            while (pathIndex < path.length && path.data[pathIndex] != 47) {
+                pathIndex += 1;
+            }
+
+            let patternLength: usize = patternIndex - patternStart;
+            let pathLength: usize = pathIndex - pathStart;
+
+            if (patternLength >= 3 && pattern.data[patternStart] == 123 && pattern.data[patternIndex - 1] == 125) {
+                if (ctx.paramCount >= 8) {
+                    return false;
+                }
+
+                ctx.params[ctx.paramCount].name = StringView.from_parts(pattern.data + patternStart + 1, patternLength - 2);
+                ctx.params[ctx.paramCount].value = StringView.from_parts(path.data + pathStart, pathLength);
+                ctx.paramCount += 1;
+                continue;
+            }
+
+            let patternSegment: StringView = StringView.from_parts(pattern.data + patternStart, patternLength);
+            let pathSegment: StringView = StringView.from_parts(path.data + pathStart, pathLength);
+            if (!StringView.equals(patternSegment, pathSegment)) {
+                return false;
+            }
+        }
+
+        return patternIndex == pattern.length && pathIndex == path.length;
+    }
+
+    fn dispatch(self: HttpServer*, request: HttpRequest*) -> HttpResponse {
+        let method: StringView = StringView.from_cstr(request.method);
+        let path: StringView = StringView.from_cstr(request.url);
+
+        for (let i: usize = 0; i < self.routeCount; i += 1) {
+            let route: HttpRoute* = &self.routes[i];
+            let ctx: HttpContext;
+            ctx.request = request;
+            ctx.paramCount = 0;
+            ctx.response = HttpResponse.not_found("Not found\n");
+
+            if (StringView.equals(route.method, method) && HttpServer.match_path(&route.path, &path, &ctx)) {
+                route.handler(&ctx);
+                return ctx.response;
+            }
+        }
+
+        return HttpResponse.not_found("Not found\n");
+    }
+}
+
+struct UserEndPoint {
+    static fn register(server: HttpServer*) -> void {
+        server.get("/users", UserEndPoint.list);
+        server.get("/users/{id}", UserEndPoint.get);
+        server.post("/users", UserEndPoint.create);
+    }
+
+    static fn list(ctx: HttpContext*) -> void {
+        ctx.text("users\n");
+    }
+
+    static fn get(ctx: HttpContext*) -> void {
+        let id: StringView = ctx.param("id");
+        let parsed: Option<int> = id.parse_int();
+        printf("matched user id=%d\n", parsed.unwrap_or<int>(0));
+        ctx.text("user\n");
+    }
+
+    static fn create(ctx: HttpContext*) -> void {
+        ctx.text("created\n");
+    }
+}
+
+fn http_server_dispatch(
+    cls: void*,
+    connection: struct MHD_Connection*,
+    url: const char*,
+    method: const char*,
+    version: const char*,
+    uploadData: const char*,
+    uploadDataSize: size_t*,
+    reqCls: void**) -> enum MHD_Result {
+    let request: HttpRequest = HttpRequest {
+        url: url,
+        method: method,
+        version: version,
+        raw: connection
+    };
+
+    let server: HttpServer* = (HttpServer*)cls;
+    let response: HttpResponse = server.dispatch(&request);
+    let mhdResponse: struct MHD_Response* = MHD_create_response_from_buffer(
+        strlen(response.body),
+        (void*)response.body,
+        MHD_RESPMEM_PERSISTENT
+    );
+
+    MHD_add_response_header(mhdResponse, "Content-Type", response.contentType);
+
+    let result: enum MHD_Result = MHD_queue_response(connection, response.status, mhdResponse);
+    MHD_destroy_response(mhdResponse);
+    return result;
+}
+
+fn main() -> int {
+    let server: HttpServer = HttpServer.create(8080);
+    UserEndPoint.register(&server);
+
+    if (!server.start()) {
+        printf("failed to start server\n");
+        return 1;
+    }
+
+    printf("listening on http://127.0.0.1:8080/\n");
+    printf("press Enter to stop\n");
+    getchar();
+
+    server.stop();
+    return 0;
+}

@@ -1,0 +1,165 @@
+---
+interface Props {
+  code: string;
+}
+
+const { code } = Astro.props;
+
+const keywords = new Set([
+  "as",
+  "case",
+  "const",
+  "declare",
+  "default",
+  "else",
+  "expose",
+  "extension",
+  "fn",
+  "for",
+  "foreach",
+  "from",
+  "if",
+  "import",
+  "in",
+  "interface",
+  "let",
+  "match",
+  "module",
+  "requires",
+  "return",
+  "static",
+  "struct",
+  "switch",
+  "type",
+  "union",
+  "using",
+  "where",
+  "while"
+]);
+
+const literals = new Set(["false", "null", "opaque", "Self", "true"]);
+const builtins = new Set([
+  "bool",
+  "char",
+  "double",
+  "float",
+  "int",
+  "i32",
+  "i64",
+  "u8",
+  "u16",
+  "u32",
+  "u64",
+  "usize",
+  "void"
+]);
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function span(kind: string, value: string): string {
+  return `<span class="cx-token cx-${kind}">${escapeHtml(value)}</span>`;
+}
+
+function readString(source: string, index: number, quote: string): number {
+  let i = index + 1;
+  while (i < source.length) {
+    if (source[i] === "\\") {
+      i += 2;
+      continue;
+    }
+
+    if (source[i] === quote) {
+      return i + 1;
+    }
+
+    i += 1;
+  }
+
+  return source.length;
+}
+
+function readWhile(source: string, index: number, pattern: RegExp): number {
+  let i = index;
+  while (i < source.length && pattern.test(source[i])) {
+    i += 1;
+  }
+
+  return i;
+}
+
+function highlight(source: string): string {
+  let output = "";
+  let i = 0;
+
+  while (i < source.length) {
+    const char = source[i];
+    const next = source[i + 1] ?? "";
+
+    if (char === "/" && next === "/") {
+      const end = source.indexOf("\n", i);
+      const stop = end === -1 ? source.length : end;
+      output += span("comment", source.slice(i, stop));
+      i = stop;
+      continue;
+    }
+
+    if (char === "/" && next === "*") {
+      const end = source.indexOf("*/", i + 2);
+      const stop = end === -1 ? source.length : end + 2;
+      output += span("comment", source.slice(i, stop));
+      i = stop;
+      continue;
+    }
+
+    if (char === "\"" || char === "'") {
+      const stop = readString(source, i, char);
+      output += span("string", source.slice(i, stop));
+      i = stop;
+      continue;
+    }
+
+    if (/[0-9]/.test(char)) {
+      const stop = readWhile(source, i, /[0-9A-Fa-f_xX.]/);
+      output += span("number", source.slice(i, stop));
+      i = stop;
+      continue;
+    }
+
+    if (/[A-Za-z_]/.test(char)) {
+      const stop = readWhile(source, i, /[A-Za-z0-9_]/);
+      const word = source.slice(i, stop);
+      const after = source.slice(stop).match(/^\s*/)?.[0] ?? "";
+      const following = source[stop + after.length] ?? "";
+
+      if (keywords.has(word)) {
+        output += span("keyword", word);
+      } else if (literals.has(word)) {
+        output += span("literal", word);
+      } else if (builtins.has(word)) {
+        output += span("type", word);
+      } else if (following === "(") {
+        output += span("function", word);
+      } else {
+        output += escapeHtml(word);
+      }
+
+      i = stop;
+      continue;
+    }
+
+    output += escapeHtml(char);
+    i += 1;
+  }
+
+  return output;
+}
+
+const highlighted = highlight(code);
+---
+
+<pre class="cx-code astro-code github-dark" tabindex="0" data-language="cx"><code set:html={highlighted} /></pre>

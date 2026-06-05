@@ -1,0 +1,26 @@
+struct MissingLength: Contiguous<int> {
+    data: int*;
+}
+
+struct BadRequirementArgs: Contiguous<int, int> {
+    data: int*;
+    length: usize;
+}
+
+struct BadIteratorForDeclaration {
+    value: int;
+}
+
+struct BadIterableDeclaration: Iterable<int, BadIteratorForDeclaration> {
+    value: int;
+}
+
+fn BadIterableDeclaration.iterator(self: BadIterableDeclaration*) -> BadIteratorForDeclaration {
+    let iterator: BadIteratorForDeclaration;
+    iterator.value = self.value;
+    return iterator;
+}
+
+fn main() -> int {
+    return 0;
+}

@@ -1,0 +1,347 @@
+module std.core;
+
+struct HashMap<K, V> where K: Hash<K> + Equal<K> {
+    keys: K*;
+    values: V*;
+    hashes: u64*;
+    states: u8*;
+    length: usize;
+    capacity: usize;
+    allocator: Allocator*;
+}
+
+struct HashMapIterator<K, V>: KeyValueIterator<K, V> {
+    map: HashMap<K, V>*;
+    index: usize;
+}
+
+extension HashMapIterator<K, V> {
+    fn next() -> bool {
+        let map: HashMap<K, V>* = self.map;
+        while (self.index < map.capacity) {
+            if (map.states[self.index] == 1) {
+                self.index += 1;
+                return true;
+            }
+
+            self.index += 1;
+        }
+
+        return false;
+    }
+
+    fn key() -> K* {
+        let map: HashMap<K, V>* = self.map;
+        return &map.keys[self.index - 1];
+    }
+
+    fn value() -> V* {
+        let map: HashMap<K, V>* = self.map;
+        return &map.values[self.index - 1];
+    }
+}
+
+extension HashMap<K, V> {
+    static fn create() -> HashMap<K, V> {
+        return HashMap<K, V>.with_capacity(0);
+    }
+
+    static fn with_capacity(capacity: usize) -> HashMap<K, V> {
+        return HashMap<K, V>.with_allocator(Allocator.default(), capacity);
+    }
+
+    static fn with_allocator(allocator: Allocator*, capacity: usize) -> HashMap<K, V> {
+        let map: HashMap<K, V>;
+        map.keys = null;
+        map.values = null;
+        map.hashes = null;
+        map.states = null;
+        map.length = 0;
+        map.capacity = 0;
+        map.allocator = allocator;
+
+        if (capacity > 0) {
+            map.reserve(capacity);
+        }
+
+        return map;
+    }
+
+    fn free() -> void {
+        if (self.keys != null) {
+            self.allocator.free_bytes(self.keys, self.capacity * sizeof(K));
+        }
+        if (self.values != null) {
+            self.allocator.free_bytes(self.values, self.capacity * sizeof(V));
+        }
+        if (self.hashes != null) {
+            self.allocator.free_bytes(self.hashes, self.capacity * sizeof(u64));
+        }
+        if (self.states != null) {
+            self.allocator.free_bytes(self.states, self.capacity * sizeof(u8));
+        }
+
+        self.keys = null;
+        self.values = null;
+        self.hashes = null;
+        self.states = null;
+        self.length = 0;
+        self.capacity = 0;
+        self.allocator = Allocator.default();
+    }
+
+    fn clear() -> void {
+        let i: usize = 0;
+        while (i < self.capacity) {
+            self.states[i] = 0;
+            i += 1;
+        }
+
+        self.length = 0;
+    }
+
+    fn is_empty() -> bool {
+        return self.length == 0;
+    }
+
+    fn iterator() -> HashMapIterator<K, V> {
+        let iterator: HashMapIterator<K, V>;
+        iterator.map = self;
+        iterator.index = 0;
+        return iterator;
+    }
+
+    fn find_slot(key: K, key_hash: u64, found: bool*) -> usize {
+        *found = false;
+        if (self.capacity == 0) {
+            return 0;
+        }
+
+        let first_deleted: usize = self.capacity;
+        let index: usize = (usize)(key_hash % self.capacity);
+        let scanned: usize = 0;
+
+        while (scanned < self.capacity) {
+            let state: u8 = self.states[index];
+            if (state == 0) {
+                if (first_deleted != self.capacity) {
+                    return first_deleted;
+                }
+
+                return index;
+            }
+
+            if (state == 2) {
+                if (first_deleted == self.capacity) {
+                    first_deleted = index;
+                }
+            }
+            else if (self.hashes[index] == key_hash && K.equals(self.keys[index], key)) {
+                *found = true;
+                return index;
+            }
+
+            index = (index + 1) % self.capacity;
+            scanned += 1;
+        }
+
+        if (first_deleted != self.capacity) {
+            return first_deleted;
+        }
+
+        return self.capacity;
+    }
+
+    fn insert_existing(key: K, value: V, key_hash: u64) -> bool {
+        let found: bool = false;
+        let slot: usize = self.find_slot<K, V>(key, key_hash, &found);
+        if (slot >= self.capacity) {
+            return false;
+        }
+
+        if (!found) {
+            self.keys[slot] = key;
+            self.hashes[slot] = key_hash;
+            self.states[slot] = 1;
+            self.length += 1;
+        }
+
+        self.values[slot] = value;
+        return true;
+    }
+
+    fn reserve(capacity: usize) -> bool {
+        if (capacity <= self.capacity) {
+            return true;
+        }
+
+        let old_keys: K* = self.keys;
+        let old_values: V* = self.values;
+        let old_hashes: u64* = self.hashes;
+        let old_states: u8* = self.states;
+        let old_capacity: usize = self.capacity;
+
+        let new_keys: K* = (K*)self.allocator.allocate_bytes(capacity * sizeof(K));
+        let new_values: V* = (V*)self.allocator.allocate_bytes(capacity * sizeof(V));
+        let new_hashes: u64* = (u64*)self.allocator.allocate_bytes(capacity * sizeof(u64));
+        let new_states: u8* = (u8*)self.allocator.allocate_bytes(capacity * sizeof(u8));
+        if (new_keys == null || new_values == null || new_hashes == null || new_states == null) {
+            if (new_keys != null) {
+                self.allocator.free_bytes(new_keys, capacity * sizeof(K));
+            }
+            if (new_values != null) {
+                self.allocator.free_bytes(new_values, capacity * sizeof(V));
+            }
+            if (new_hashes != null) {
+                self.allocator.free_bytes(new_hashes, capacity * sizeof(u64));
+            }
+            if (new_states != null) {
+                self.allocator.free_bytes(new_states, capacity * sizeof(u8));
+            }
+
+            return false;
+        }
+
+        self.keys = new_keys;
+        self.values = new_values;
+        self.hashes = new_hashes;
+        self.states = new_states;
+        self.capacity = capacity;
+        self.length = 0;
+
+        let i: usize = 0;
+        while (i < self.capacity) {
+            self.states[i] = 0;
+            i += 1;
+        }
+
+        i = 0;
+        while (i < old_capacity) {
+            if (old_states[i] == 1) {
+                self.insert_existing<K, V>(old_keys[i], old_values[i], old_hashes[i]);
+            }
+            i += 1;
+        }
+
+        if (old_keys != null) {
+            self.allocator.free_bytes(old_keys, old_capacity * sizeof(K));
+        }
+        if (old_values != null) {
+            self.allocator.free_bytes(old_values, old_capacity * sizeof(V));
+        }
+        if (old_hashes != null) {
+            self.allocator.free_bytes(old_hashes, old_capacity * sizeof(u64));
+        }
+        if (old_states != null) {
+            self.allocator.free_bytes(old_states, old_capacity * sizeof(u8));
+        }
+
+        return true;
+    }
+
+    fn put(key: K, value: V) -> bool {
+        if (self.capacity == 0 || ((self.length + 1) * 100) >= (self.capacity * 70)) {
+            let new_capacity: usize = 8;
+            if (self.capacity > 0) {
+                new_capacity = self.capacity * 2;
+            }
+
+            if (!self.reserve(new_capacity)) {
+                return false;
+            }
+        }
+
+        return self.insert_existing<K, V>(key, value, K.hash(key));
+    }
+
+    fn contains(key: K) -> bool {
+        let found: bool = false;
+        self.find_slot<K, V>(key, K.hash(key), &found);
+        return found;
+    }
+
+    fn get(key: K) -> Option<V> {
+        let found: bool = false;
+        let slot: usize = self.find_slot<K, V>(key, K.hash(key), &found);
+        if (!found) {
+            return Option.none<V>();
+        }
+
+        return Option.some<V>(self.values[slot]);
+    }
+
+    fn remove(key: K) -> bool {
+        let found: bool = false;
+        let slot: usize = self.find_slot<K, V>(key, K.hash(key), &found);
+        if (!found) {
+            return false;
+        }
+
+        self.states[slot] = 2;
+        self.length -= 1;
+        return true;
+    }
+}
+
+test "hash map put get update and remove" {
+    let map: HashMap<int, int> = HashMap<int, int>.with_capacity(4);
+    expect_true(map.is_empty());
+
+    expect_true(map.put(2, 40));
+    expect_true(map.put(3, 70));
+    expect_true(map.put(2, 50));
+    expect_eq_usize((usize)2, map.length);
+
+    let value: Option<int> = map.get(2);
+    expect_true(value.has_value);
+    expect_eq_int(50, value.value);
+    expect_true(map.contains(3));
+    expect_false(map.contains(4));
+
+    expect_true(map.remove(2));
+    expect_false(map.contains(2));
+    expect_false(map.remove(2));
+    expect_eq_usize((usize)1, map.length);
+
+    map.free();
+}
+
+test "hash map grows reuses removed slots and iterates" {
+    let map: HashMap<int, int> = HashMap<int, int>.with_capacity(1);
+    let i: int = 1;
+    while (i <= 10) {
+        expect_true(map.put(i, i * 10));
+        i += 1;
+    }
+
+    expect_eq_usize((usize)10, map.length);
+    expect(map.capacity >= 10);
+    expect_true(map.remove(5));
+    expect_true(map.put(15, 150));
+    expect_eq_usize((usize)10, map.length);
+
+    let total: int = 0;
+    foreach key => value in map {
+        total = total + key + value;
+    }
+
+    expect_eq_int(715, total);
+    map.free();
+}
+
+test "hash map string view keys" {
+    let map: HashMap<StringView, int> = HashMap<StringView, int>.create();
+    expect_true(map.put(StringView.from_cstr("/"), 1));
+    expect_true(map.put(StringView.from_cstr("/health"), 2));
+    expect_true(map.put(StringView.from_cstr("/health"), 3));
+    expect_eq_usize((usize)2, map.length);
+
+    let value: Option<int> = map.get(StringView.from_cstr("/health"));
+    expect_true(value.has_value);
+    expect_eq_int(3, value.value);
+    expect_true(map.contains(StringView.from_cstr("/")));
+    expect_true(map.remove(StringView.from_cstr("/")));
+    expect_false(map.contains(StringView.from_cstr("/")));
+
+    map.free();
+}

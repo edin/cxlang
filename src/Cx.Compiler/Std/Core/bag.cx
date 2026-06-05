@@ -1,0 +1,17 @@
+module std.core;
+
+type Bag<T> using Vec<T> {
+    expose static with_capacity -> Self;
+    expose static with_allocator -> Self;
+    expose free;
+    expose clear;
+    expose is_empty;
+    expose reserve;
+    expose add;
+    expose pop;
+    expose get;
+    expose first;
+    expose last;
+    expose swap_remove as remove_at;
+    expose as_slice;
+}

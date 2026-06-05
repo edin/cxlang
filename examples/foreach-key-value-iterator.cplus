@@ -1,0 +1,55 @@
+struct IntPairIterator: KeyValueIterator<int, int> {
+    keys: int*;
+    values: int*;
+    length: usize;
+    index: usize;
+}
+
+fn IntPairIterator.next(self: IntPairIterator*) -> bool {
+    if (self.index >= self.length) {
+        return false;
+    }
+
+    self.index = self.index + 1;
+    return true;
+}
+
+fn IntPairIterator.key(self: IntPairIterator*) -> int* {
+    return &self.keys[self.index - 1];
+}
+
+fn IntPairIterator.value(self: IntPairIterator*) -> int* {
+    return &self.values[self.index - 1];
+}
+
+struct IntPairBag: KeyValueIterable<int, int, IntPairIterator> {
+    keys: int*;
+    values: int*;
+    length: usize;
+}
+
+fn IntPairBag.iterator(self: IntPairBag*) -> IntPairIterator {
+    let iterator: IntPairIterator;
+    iterator.keys = self.keys;
+    iterator.values = self.values;
+    iterator.length = self.length;
+    iterator.index = 0;
+    return iterator;
+}
+
+fn main() -> int {
+    let keys: int[2] = { 10, 20 };
+    let values: int[2] = { 1, 2 };
+    let bag: IntPairBag;
+    bag.keys = &keys[0];
+    bag.values = &values[0];
+    bag.length = 2;
+
+    let total: int = 0;
+    foreach index, key => value in bag {
+        value = value + 10;
+        total = total + index + key + value;
+    }
+
+    return total - 54;
+}

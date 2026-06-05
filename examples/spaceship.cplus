@@ -1,0 +1,11 @@
+fn main() -> int {
+    let low: int = 10;
+    let high: int = 20;
+    let same: int = 10;
+
+    let less: int = low <=> high;
+    let equal: int = low <=> same;
+    let greater: int = high <=> low;
+
+    return less + equal + greater;
+}

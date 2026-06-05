@@ -1,0 +1,13 @@
+bin/
+obj/
+build/
+*.user
+*.suo
+.vs/
+
+site/node_modules/
+site/dist/
+site/.astro/
+
+/examples/*.c
+/examples/*.c

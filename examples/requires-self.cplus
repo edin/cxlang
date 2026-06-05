@@ -1,0 +1,55 @@
+requires Linkable {
+    next: Self*;
+}
+
+requires Cloneable {
+    fn clone(self: Self*) -> Self;
+}
+
+requires Creatable<T> {
+    static fn create(value: T) -> Self;
+}
+
+struct Node: Linkable {
+    next: Node*;
+}
+
+struct Box<T>: Cloneable, Creatable<T> {
+    value: T;
+
+    static fn create(value: T) -> Self {
+        let box: Self;
+        box.value = value;
+        return box;
+    }
+
+    fn clone(self: Self*) -> Self {
+        let other: Self;
+        other.value = self.value;
+        return other;
+    }
+}
+
+struct Crate<U>: Cloneable, Creatable<U> {
+    value: U;
+
+    static fn create(value: U) -> Self {
+        let crate: Self;
+        crate.value = value;
+        return crate;
+    }
+
+    fn clone(self: Self*) -> Self {
+        let other: Self;
+        other.value = self.value;
+        return other;
+    }
+}
+
+fn main() -> int {
+    let box: Box<int> = Box.create<int>(42);
+    let copy: Box<int> = box.clone();
+    let crate: Crate<int> = Crate.create<int>(copy.value);
+    let crateCopy: Crate<int> = crate.clone();
+    return crateCopy.value - 42;
+}

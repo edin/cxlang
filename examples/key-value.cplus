@@ -1,0 +1,8 @@
+type StringInt = KeyValue<char*, int>;
+
+fn main() -> int {
+    let entry: StringInt;
+    entry.key = "age";
+    entry.value = 42;
+    return entry.value - 42;
+}

@@ -1,0 +1,273 @@
+---
+import { Code } from "astro:components";
+import CxCode from "../components/CxCode.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const featureGroups = [
+  {
+    title: "C, But Friendlier",
+    items: [
+      "Functions with return types",
+      "Struct methods and extensions",
+      "Top-level constants and globals",
+      "Named initializers"
+    ]
+  },
+  {
+    title: "Useful Type Power",
+    items: [
+      "Generics for reusable containers",
+      "Tagged unions with match",
+      "Interfaces as C vtables",
+      "Structural requirements"
+    ]
+  },
+  {
+    title: "Tooling First",
+    items: [
+      "Transpile, build, run",
+      "Project config with cx.toml",
+      "Built-in test discovery",
+      "Readable generated C"
+    ]
+  }
+];
+
+const examples = [
+  {
+    name: "Vec and Foreach",
+    code: `import c.stdio;
+
+fn main() -> int {
+    let values = Vec<int>.create();
+    values.add(10);
+    values.add(20);
+    values.add(30);
+
+    foreach value in values {
+        printf("Value %d\\n", value);
+    }
+
+    values.free();
+    return 0;
+}`
+  },
+  {
+    name: "Tagged Union",
+    code: `union Value {
+    Number: int;
+    Position: Point;
+}
+
+fn score(value: Value*) -> int {
+    match value {
+        Number: n => return n;
+        Position: p => return p.x + p.y;
+        _ => return 0;
+    }
+}`
+  },
+  {
+    name: "Tests",
+    code: `test "stack length" {
+    let stack = Stack<int>.create();
+    stack.push(10);
+    expect(stack.length == 1);
+    stack.free();
+}`
+  }
+];
+
+const stdlib = [
+  "Vec<T>",
+  "StringView",
+  "StringBuilder",
+  "HashMap<K, V>",
+  "HashSet<T>",
+  "Option<T>",
+  "Result<T, E>",
+  "File",
+  "Path",
+  "Bitmap",
+  "Allocator",
+  "JsonWriter"
+];
+
+const cliCommands = `cx new hello-cx
+cd hello-cx
+cx run
+cx test
+cx test --std`;
+
+const cxAdd = `fn add(a: int, b: int) -> int {
+    let total: int = a + b;
+    return total;
+}`;
+
+const cAdd = `int add(int a, int b)
+{
+    int total = a + b;
+    return total;
+}`;
+
+const allocatorVecExample = `import std.core;
+
+fn main() -> int {
+    let buffer: u8[256];
+    let fixed: FixedBufferAllocator =
+        FixedBufferAllocator.from_buffer(&buffer[0], 256);
+    let allocator: Allocator = fixed;
+
+    let values: Vec<int> = Vec<int>.with_allocator(&allocator, 4);
+    values.add(10);
+    values.add(20);
+    values.add(30);
+
+    let total: int = 0;
+    foreach value in values {
+        total += value;
+    }
+
+    values.free();
+    return 0;
+}`;
+---
+
+<BaseLayout
+  title="CX Language - C Power, Better Syntax"
+  description="CX is a C-like language and CLI that transpiles to readable C while adding generics, tagged unions, interfaces, tests, and a small useful standard library."
+>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="CX home">
+      <span>CX Lang</span>
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="#examples">Examples</a>
+      <a href="/features">Features</a>
+      <a href="#stdlib">Stdlib</a>
+      <a href="#cli">CLI</a>
+      <a href="https://github.com/edin/cxlang">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-content">
+        <p class="eyebrow">C output. Modern syntax. No mandatory runtime.</p>
+        <h1 id="hero-title">CX Language</h1>
+        <p class="hero-copy">
+          A small C-like language and toolchain for writing native C programs with
+          generics, tagged unions, interfaces, tests, and readable generated C.
+        </p>
+        <div class="hero-actions" aria-label="Primary actions">
+          <a href="#cli" class="button primary">Start with the CLI</a>
+          <a href="/features" class="button secondary">Browse features</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="quickstart section-band" id="cli" aria-labelledby="cli-title">
+      <div class="section-heading">
+        <p class="eyebrow">Command line</p>
+        <h2 id="cli-title">Try CX from a terminal</h2>
+      </div>
+      <div class="terminal" aria-label="CX command examples">
+        <div class="terminal-bar">
+          <span></span><span></span><span></span>
+        </div>
+        <Code code={cliCommands} lang="bash" theme="github-dark" />
+      </div>
+    </section>
+
+    <section class="split section-band light" aria-labelledby="output-title">
+      <div>
+        <p class="eyebrow">Transpiles to C</p>
+        <h2 id="output-title">Readable output is the point</h2>
+        <p>
+          CX keeps the language close to C and lowers features into ordinary C
+          shapes: structs, functions, enums, tagged records, function pointers,
+          and explicit allocator calls.
+        </p>
+      </div>
+      <div class="code-compare" aria-label="CX to C example">
+        <div>
+          <span class="code-label">CX</span>
+          <CxCode code={cxAdd} />
+        </div>
+        <div>
+          <span class="code-label">C</span>
+          <Code code={cAdd} lang="c" theme="github-dark" />
+        </div>
+      </div>
+    </section>
+
+    <section class="section-band" id="language" aria-labelledby="language-title">
+      <div class="section-heading">
+        <p class="eyebrow">Language tour</p>
+        <h2 id="language-title">Small feature set, sharp edges rounded off</h2>
+      </div>
+      <div class="feature-grid">
+        {featureGroups.map((group) => (
+          <article class="feature-card">
+            <h3>{group.title}</h3>
+            <ul>
+              {group.items.map((item) => <li>{item}</li>)}
+            </ul>
+          </article>
+        ))}
+      </div>
+      <div class="section-link-row">
+        <a href="/features" class="text-link">Open the full feature catalog</a>
+      </div>
+    </section>
+
+    <section class="section-band dark" id="examples" aria-labelledby="examples-title">
+      <div class="section-heading">
+        <p class="eyebrow">Examples</p>
+        <h2 id="examples-title">Real CX code</h2>
+      </div>
+      <div class="example-grid">
+        {examples.map((example) => (
+          <article class="example-card">
+            <h3>{example.name}</h3>
+            <CxCode code={example.code} />
+          </article>
+        ))}
+      </div>
+    </section>
+
+    <section class="section-band light" id="stdlib" aria-labelledby="stdlib-title">
+      <div class="section-heading">
+        <p class="eyebrow">Standard library</p>
+        <h2 id="stdlib-title">Small core, useful primitives</h2>
+      </div>
+      <div class="stdlib-list" aria-label="Standard library modules and types">
+        {stdlib.map((item) => <span>{item}</span>)}
+      </div>
+      <div class="core-showcase">
+        <div>
+          <h3>Allocator-aware containers</h3>
+          <p>
+            <code>Vec&lt;T&gt;</code> can use the default C allocator or a caller-provided
+            allocator, so the same container works with heap memory, fixed buffers,
+            arenas, and future allocator shapes.
+          </p>
+        </div>
+        <CxCode code={allocatorVecExample} />
+      </div>
+    </section>
+
+    <section class="section-band closing" aria-labelledby="closing-title">
+      <div>
+        <p class="eyebrow">Current shape</p>
+        <h2 id="closing-title">A native-code playground that can grow into a serious tool</h2>
+        <p>
+          CX is especially interesting for small native tools, C library wrappers,
+          language experiments, extension modules, graphics demos, and codebases
+          where C compatibility matters but writing raw C is the least fun part.
+        </p>
+      </div>
+      <a href="https://github.com/edin/cxlang" class="button primary">View source on GitHub</a>
+    </section>
+  </main>
+</BaseLayout>

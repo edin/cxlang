@@ -1,0 +1,70 @@
+fn main() -> int {
+    File.write_text("build/string-view-text.txt", "\n  answer = 42  \n ratio = -12.5\r\n");
+
+    let bytes: Option<ByteBuffer> = File.read_all("build/string-view-text.txt");
+    if (!bytes.has_value) {
+        return 1;
+    }
+
+    let buffer: ByteBuffer = bytes.value;
+    let text: StringView = StringView.from_bytes(buffer.data, buffer.length);
+    let answer: int = 0;
+    let ratio_ok: bool = false;
+    let lines: StringLines = text.lines();
+
+    foreach line in lines {
+        let clean: StringView = line.trim();
+        if (clean.is_empty()) {
+            continue;
+        }
+
+        if (!clean.find(StringView.from_cstr("=")).has_value) {
+            buffer.free();
+            return 2;
+        }
+
+        let split: Option<StringSplit> = clean.split_once('=');
+        if (!split.has_value) {
+            buffer.free();
+            return 3;
+        }
+
+        let raw_key: StringView = split.value.left;
+        let raw_value_text: StringView = split.value.right;
+        let key: StringView = raw_key.trim();
+        let value_text: StringView = raw_value_text.trim();
+
+        if (key.equals_cstr("answer")) {
+            if (!clean.starts_with(StringView.from_cstr("answer")) || !clean.ends_with(StringView.from_cstr("42"))) {
+                buffer.free();
+                return 4;
+            }
+
+            let value: Option<int> = value_text.parse_int();
+            let number: Option<u64> = value_text.parse_u64();
+            if (!value.has_value || value.value != 42 || !number.has_value || number.value != (u64)42) {
+                buffer.free();
+                return 5;
+            }
+
+            answer = value.value;
+        } else if (key.equals_cstr("ratio")) {
+            let ratio: Option<double> = value_text.parse_float();
+            if (!ratio.has_value || ratio.value > -12.49 || ratio.value < -12.51) {
+                buffer.free();
+                return 6;
+            }
+
+            ratio_ok = true;
+        }
+    }
+
+    if (answer != 42 || !ratio_ok) {
+        buffer.free();
+        return 7;
+    }
+
+    buffer.free();
+    File.remove("build/string-view-text.txt");
+    return 0;
+}

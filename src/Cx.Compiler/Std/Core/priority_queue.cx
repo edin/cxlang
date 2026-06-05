@@ -1,0 +1,137 @@
+module std.core;
+
+type PriorityQueue<T> using Vec<T> {
+    expose static with_capacity -> Self;
+    expose static with_allocator -> Self;
+    expose free;
+    expose clear;
+    expose is_empty;
+    expose reserve;
+    expose peek as peek_unordered;
+
+    fn peek() -> Option<T> {
+        if (self.length == 0) {
+            return Option.none<T>();
+        }
+
+        return Option.some<T>(self.data[0]);
+    }
+
+    fn push(value: T) -> bool {
+        if (self.length >= self.capacity) {
+            let new_capacity: usize = 4;
+            if (self.capacity > 0) {
+                new_capacity = self.capacity * 2;
+            }
+
+            let data: T* = (T*)self.allocator.resize_bytes(
+                self.data,
+                self.capacity * sizeof(T),
+                new_capacity * sizeof(T));
+
+            if (data == null) {
+                return false;
+            }
+
+            self.data = data;
+            self.capacity = new_capacity;
+        }
+
+        self.data[self.length] = value;
+        self.length += 1;
+
+        let index: usize = self.length - 1;
+        while (index > 0) {
+            let parent: usize = (index - 1) / 2;
+            if ((self.data[parent] <=> self.data[index]) >= 0) {
+                break;
+            }
+
+            let tmp: T = self.data[parent];
+            self.data[parent] = self.data[index];
+            self.data[index] = tmp;
+            index = parent;
+        }
+
+        return true;
+    }
+
+    fn pop() -> Option<T> {
+        if (self.length == 0) {
+            return Option.none<T>();
+        }
+
+        let top: T = self.data[0];
+        self.length -= 1;
+        if (self.length > 0) {
+            self.data[0] = self.data[self.length];
+
+            let index: usize = 0;
+            while (true) {
+                let left: usize = index * 2 + 1;
+                let right: usize = left + 1;
+                let largest: usize = index;
+
+                if (left < self.length && (self.data[largest] <=> self.data[left]) < 0) {
+                    largest = left;
+                }
+
+                if (right < self.length && (self.data[largest] <=> self.data[right]) < 0) {
+                    largest = right;
+                }
+
+                if (largest == index) {
+                    break;
+                }
+
+                let tmp: T = self.data[index];
+                self.data[index] = self.data[largest];
+                self.data[largest] = tmp;
+                index = largest;
+            }
+        }
+
+        return Option.some<T>(top);
+    }
+}
+
+test "priority queue pops highest first" {
+    let queue: PriorityQueue<int> = PriorityQueue<int>.with_capacity((usize)4);
+    expect_true(queue.is_empty());
+    expect_true(queue.push(10));
+    expect_true(queue.push(30));
+    expect_true(queue.push(20));
+    expect_false(queue.is_empty());
+
+    let peeked: Option<int> = queue.peek();
+    expect_true(peeked.has_value);
+    expect_eq_int(30, peeked.value);
+
+    let first: Option<int> = queue.pop();
+    let second: Option<int> = queue.pop();
+    let third: Option<int> = queue.pop();
+    let fourth: Option<int> = queue.pop();
+    expect_eq_int(30, first.value);
+    expect_eq_int(20, second.value);
+    expect_eq_int(10, third.value);
+    expect_false(fourth.has_value);
+    expect_true(queue.is_empty());
+
+    queue.free();
+}
+
+test "priority queue grows" {
+    let queue: PriorityQueue<int> = PriorityQueue<int>.with_capacity((usize)1);
+    expect_true(queue.push(1));
+    expect_true(queue.push(5));
+    expect_true(queue.push(3));
+    expect_true(queue.push(9));
+    expect(queue.capacity >= 4);
+
+    let first: Option<int> = queue.pop();
+    let second: Option<int> = queue.pop();
+    expect_eq_int(9, first.value);
+    expect_eq_int(5, second.value);
+
+    queue.free();
+}

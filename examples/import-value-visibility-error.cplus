@@ -1,0 +1,4 @@
+fn main() -> int {
+    let ticks: int = CLOCKS_PER_SEC;
+    return ticks;
+}

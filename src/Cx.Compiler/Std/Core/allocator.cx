@@ -1,0 +1,286 @@
+module std.core;
+
+import c.stdlib;
+
+interface Allocator {
+    fn allocate(size: usize, align: usize) -> void*;
+    fn resize(ptr: void*, old_size: usize, new_size: usize, align: usize) -> void*;
+    fn free(ptr: void*, size: usize, align: usize) -> void;
+}
+
+fn allocator_align_forward(offset: usize, align: usize) -> usize {
+    if (align <= 1) {
+        return offset;
+    }
+
+    let mask: usize = align - 1;
+    return (offset + mask) & ~mask;
+}
+
+fn allocator_default_align() -> usize {
+    return 8;
+}
+
+struct CAllocator: Allocator {
+    unused: int;
+}
+
+let std_heap_allocator_storage: CAllocator = CAllocator { unused: 0 };
+let std_heap_allocator: Allocator = std_heap_allocator_storage;
+
+static fn Allocator.default() -> Allocator* {
+    return &std_heap_allocator;
+}
+
+extension Allocator {
+    fn allocate_bytes(size: usize) -> void* {
+        return self.allocate(size, allocator_default_align());
+    }
+
+    fn resize_bytes(ptr: void*, old_size: usize, new_size: usize) -> void* {
+        return self.resize(ptr, old_size, new_size, allocator_default_align());
+    }
+
+    fn free_bytes(ptr: void*, size: usize) -> void {
+        self.free(ptr, size, allocator_default_align());
+    }
+}
+
+extension CAllocator {
+    static fn create() -> CAllocator {
+        return CAllocator { unused: 0 };
+    }
+
+    fn allocate(size: usize, align: usize) -> void* {
+        return malloc(size);
+    }
+
+    fn resize(ptr: void*, old_size: usize, new_size: usize, align: usize) -> void* {
+        return realloc(ptr, new_size);
+    }
+
+    fn free(ptr: void*, size: usize, align: usize) -> void {
+        free(ptr);
+    }
+}
+
+struct FixedBufferAllocator: Allocator {
+    data: u8*;
+    capacity: usize;
+    offset: usize;
+}
+
+extension FixedBufferAllocator {
+    static fn from_buffer(data: u8*, capacity: usize) -> FixedBufferAllocator {
+        return FixedBufferAllocator {
+            data: data,
+            capacity: capacity,
+            offset: 0
+        };
+    }
+
+    fn allocate(size: usize, align: usize) -> void* {
+        let aligned_offset: usize = allocator_align_forward(self.offset, align);
+        if (aligned_offset + size > self.capacity) {
+            return null;
+        }
+
+        let result: void* = &self.data[aligned_offset];
+        self.offset = aligned_offset + size;
+        return result;
+    }
+
+    fn resize(ptr: void*, old_size: usize, new_size: usize, align: usize) -> void* {
+        if (ptr == null) {
+            return self.allocate(new_size, align);
+        }
+
+        if (new_size <= old_size) {
+            return ptr;
+        }
+
+        let old_end: u8* = (u8*)ptr + old_size;
+        let buffer_end: u8* = self.data + self.offset;
+        if (old_end == buffer_end) {
+            let extra: usize = new_size - old_size;
+            if (self.offset + extra <= self.capacity) {
+                self.offset += extra;
+                return ptr;
+            }
+        }
+
+        return null;
+    }
+
+    fn free(ptr: void*, size: usize, align: usize) -> void {
+        let end: u8* = (u8*)ptr + size;
+        let buffer_end: u8* = self.data + self.offset;
+        if (end == buffer_end) {
+            self.offset -= size;
+        }
+    }
+
+    fn reset() -> void {
+        self.offset = 0;
+    }
+}
+
+struct ArenaAllocator: Allocator {
+    data: u8*;
+    capacity: usize;
+    offset: usize;
+}
+
+extension ArenaAllocator {
+    static fn create(capacity: usize) -> ArenaAllocator {
+        return ArenaAllocator {
+            data: (u8*)malloc(capacity),
+            capacity: capacity,
+            offset: 0
+        };
+    }
+
+    fn allocate(size: usize, align: usize) -> void* {
+        if (self.data == null) {
+            return null;
+        }
+
+        let aligned_offset: usize = allocator_align_forward(self.offset, align);
+        if (aligned_offset + size > self.capacity) {
+            return null;
+        }
+
+        let result: void* = &self.data[aligned_offset];
+        self.offset = aligned_offset + size;
+        return result;
+    }
+
+    fn resize(ptr: void*, old_size: usize, new_size: usize, align: usize) -> void* {
+        if (ptr == null) {
+            return self.allocate(new_size, align);
+        }
+
+        if (new_size <= old_size) {
+            return ptr;
+        }
+
+        let old_end: u8* = (u8*)ptr + old_size;
+        let arena_end: u8* = self.data + self.offset;
+        if (old_end == arena_end) {
+            let extra: usize = new_size - old_size;
+            if (self.offset + extra <= self.capacity) {
+                self.offset += extra;
+                return ptr;
+            }
+        }
+
+        return null;
+    }
+
+    fn free(ptr: void*, size: usize, align: usize) -> void {
+        /* arena frees all memory at once */
+    }
+
+    fn reset() -> void {
+        self.offset = 0;
+    }
+
+    fn dispose() -> void {
+        if (self.data != null) {
+            free(self.data);
+        }
+
+        self.data = null;
+        self.capacity = 0;
+        self.offset = 0;
+    }
+}
+
+test "c allocator allocate resize and free bytes" {
+    let allocator: Allocator* = Allocator.default();
+    let memory: void* = allocator.allocate_bytes((usize)16);
+    expect_not_null(memory);
+
+    memory = allocator.resize_bytes(memory, (usize)16, (usize)32);
+    expect_not_null(memory);
+
+    let bytes: u8* = (u8*)memory;
+    bytes[0] = (u8)42;
+    bytes[31] = (u8)7;
+    expect_eq_int(42, (int)bytes[0]);
+    expect_eq_int(7, (int)bytes[31]);
+
+    allocator.free_bytes(memory, (usize)32);
+}
+
+test "fixed buffer allocator allocation resize and reset" {
+    let buffer: u8[32];
+    let fixed: FixedBufferAllocator = FixedBufferAllocator.from_buffer(&buffer[0], (usize)32);
+    let allocator: Allocator = fixed;
+
+    let first: void* = allocator.allocate((usize)3, (usize)1);
+    expect_not_null(first);
+    expect_eq_usize((usize)3, fixed.offset);
+
+    let second: void* = allocator.allocate((usize)4, (usize)4);
+    expect_not_null(second);
+    expect_eq_usize((usize)8, fixed.offset);
+
+    second = allocator.resize(second, (usize)4, (usize)8, (usize)4);
+    expect_not_null(second);
+    expect_eq_usize((usize)12, fixed.offset);
+
+    allocator.free(second, (usize)8, (usize)4);
+    expect_eq_usize((usize)4, fixed.offset);
+
+    fixed.reset();
+    expect_eq_usize((usize)0, fixed.offset);
+}
+
+test "fixed buffer allocator reports exhaustion" {
+    let buffer: u8[8];
+    let fixed: FixedBufferAllocator = FixedBufferAllocator.from_buffer(&buffer[0], (usize)8);
+    let allocator: Allocator = fixed;
+
+    let memory: void* = allocator.allocate((usize)8, (usize)1);
+    expect_not_null(memory);
+    expect_null(allocator.allocate((usize)1, (usize)1));
+}
+
+test "arena allocator allocation resize reset and dispose" {
+    let arena: ArenaAllocator = ArenaAllocator.create((usize)32);
+    let allocator: Allocator = arena;
+
+    let first: void* = allocator.allocate((usize)4, (usize)4);
+    expect_not_null(first);
+    expect_eq_usize((usize)4, arena.offset);
+
+    first = allocator.resize(first, (usize)4, (usize)12, (usize)4);
+    expect_not_null(first);
+    expect_eq_usize((usize)12, arena.offset);
+
+    let second: void* = allocator.allocate((usize)8, (usize)8);
+    expect_not_null(second);
+    expect_eq_usize((usize)24, arena.offset);
+
+    arena.reset();
+    expect_eq_usize((usize)0, arena.offset);
+    arena.dispose();
+    expect_null(arena.data);
+}
+
+test "vec uses fixed buffer allocator" {
+    let buffer: u8[128];
+    let fixed: FixedBufferAllocator = FixedBufferAllocator.from_buffer(&buffer[0], (usize)128);
+    let allocator: Allocator = fixed;
+
+    let values: Vec<int> = Vec<int>.with_allocator(&allocator, (usize)2);
+    expect_not_null(values.data);
+    expect_true(values.push(10));
+    expect_true(values.push(20));
+    expect_true(values.push(30));
+    expect_eq_usize((usize)3, values.length);
+    expect_eq_int(30, values.data[2]);
+
+    values.free();
+}

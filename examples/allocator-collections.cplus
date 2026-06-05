@@ -1,0 +1,40 @@
+import std.core;
+import c.stdio;
+
+fn sum_values(values: Vec<int>) -> int {
+    let total = 0;
+    foreach value in values {
+        total = total + value;
+    }
+
+    return total;
+}
+
+fn main() -> int {
+    let heap_values: Vec<int> = Vec<int>.with_capacity(2);
+    heap_values.add(1);
+    heap_values.add(2);
+
+    let buffer: u8[256];
+    let fixed: FixedBufferAllocator = FixedBufferAllocator.from_buffer(&buffer[0], 256);
+    let fixed_allocator: Allocator = fixed;
+
+    let values: Vec<int> = Vec<int>.with_allocator(&fixed_allocator, 2);
+    values.add(10);
+    values.add(20);
+    values.add(12);
+
+    let stack: Stack<int> = Stack<int>.with_allocator(&fixed_allocator, 2);
+    stack.push(7);
+    stack.push(8);
+
+    let top: Option<int> = stack.pop();
+    let total: int = sum_values(heap_values) + sum_values(values) + top.value + stack.length;
+
+    heap_values.free();
+    values.free();
+    stack.free();
+
+    printf("total=%d\n", total);
+    return total - 54;
+}

@@ -1,0 +1,9 @@
+fn main() -> int {
+    let value: int* = null;
+
+    if (value == null) {
+        return 0;
+    }
+
+    return 1;
+}

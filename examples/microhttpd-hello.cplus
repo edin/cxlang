@@ -1,0 +1,34 @@
+include <microhttpd.h>;
+import c.stdio;
+include <string.h>;
+
+fn answer(
+    cls: void*,
+    connection: struct MHD_Connection*,
+    url: const char*,
+    method: const char*,
+    version: const char*,
+    uploadData: const char*,
+    uploadDataSize: size_t*,
+    reqCls: void**) -> enum MHD_Result {
+    let page: const char* = "Hello from CX + libmicrohttpd\n";
+    let response: struct MHD_Response* = MHD_create_response_from_buffer(strlen(page), (void*)page, MHD_RESPMEM_PERSISTENT);
+    let result: enum MHD_Result = MHD_queue_response(connection, MHD_HTTP_OK, response);
+    MHD_destroy_response(response);
+    return result;
+}
+
+fn main() -> int {
+    let daemon: struct MHD_Daemon* = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD, 8080, null, null, &answer, null, MHD_OPTION_END);
+    if (daemon == null) {
+        printf("failed to start server\n");
+        return 1;
+    }
+
+    printf("listening on http://127.0.0.1:8080/\n");
+    printf("press Enter to stop\n");
+    getchar();
+
+    MHD_stop_daemon(daemon);
+    return 0;
+}

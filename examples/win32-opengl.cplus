@@ -1,0 +1,167 @@
+include <windows.h>;
+include <GL/gl.h>;
+import c.stdio;
+
+fn window_proc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT {
+    if (msg == WM_CLOSE) {
+        DestroyWindow(hwnd);
+        return 0;
+    }
+
+    if (msg == WM_DESTROY) {
+        PostQuitMessage(0);
+        return 0;
+    }
+
+    return DefWindowProcA(hwnd, msg, wParam, lParam);
+}
+
+fn draw_cube() -> void {
+    glBegin(GL_QUADS);
+
+    glColor3f(1.0, 0.1, 0.1);
+    glVertex3f(-1.0, -1.0, 1.0);
+    glVertex3f(1.0, -1.0, 1.0);
+    glVertex3f(1.0, 1.0, 1.0);
+    glVertex3f(-1.0, 1.0, 1.0);
+
+    glColor3f(0.1, 0.9, 0.2);
+    glVertex3f(-1.0, -1.0, -1.0);
+    glVertex3f(-1.0, 1.0, -1.0);
+    glVertex3f(1.0, 1.0, -1.0);
+    glVertex3f(1.0, -1.0, -1.0);
+
+    glColor3f(0.1, 0.3, 1.0);
+    glVertex3f(-1.0, 1.0, -1.0);
+    glVertex3f(-1.0, 1.0, 1.0);
+    glVertex3f(1.0, 1.0, 1.0);
+    glVertex3f(1.0, 1.0, -1.0);
+
+    glColor3f(1.0, 0.9, 0.1);
+    glVertex3f(-1.0, -1.0, -1.0);
+    glVertex3f(1.0, -1.0, -1.0);
+    glVertex3f(1.0, -1.0, 1.0);
+    glVertex3f(-1.0, -1.0, 1.0);
+
+    glColor3f(1.0, 0.2, 0.9);
+    glVertex3f(1.0, -1.0, -1.0);
+    glVertex3f(1.0, 1.0, -1.0);
+    glVertex3f(1.0, 1.0, 1.0);
+    glVertex3f(1.0, -1.0, 1.0);
+
+    glColor3f(0.1, 0.9, 0.9);
+    glVertex3f(-1.0, -1.0, -1.0);
+    glVertex3f(-1.0, -1.0, 1.0);
+    glVertex3f(-1.0, 1.0, 1.0);
+    glVertex3f(-1.0, 1.0, -1.0);
+
+    glEnd();
+}
+
+fn main() -> int {
+    let instance: HINSTANCE = GetModuleHandleA(null);
+    let className: const char* = "CxOpenGLWindow";
+
+    let wc: WNDCLASSA = {0};
+    wc.style = CS_OWNDC;
+    wc.lpfnWndProc = window_proc;
+    wc.hInstance = instance;
+    wc.lpszClassName = className;
+
+    if (RegisterClassA(&wc) == 0) {
+        printf("failed to register window class\n");
+        return 1;
+    }
+
+    let window: HWND = CreateWindowExA(
+        0,
+        className,
+        "CX Win32 OpenGL",
+        WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        800,
+        600,
+        null,
+        null,
+        instance,
+        null
+    );
+
+    if (window == null) {
+        printf("failed to create window\n");
+        return 1;
+    }
+
+    let dc: HDC = GetDC(window);
+
+    let pfd: PIXELFORMATDESCRIPTOR = {0};
+    pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.cColorBits = 32;
+    pfd.cDepthBits = 24;
+    pfd.iLayerType = PFD_MAIN_PLANE;
+
+    let pixelFormat: int = ChoosePixelFormat(dc, &pfd);
+    if (pixelFormat == 0) {
+        printf("failed to choose pixel format\n");
+        return 1;
+    }
+
+    if (SetPixelFormat(dc, pixelFormat, &pfd) == 0) {
+        printf("failed to set pixel format\n");
+        return 1;
+    }
+
+    let glContext: HGLRC = wglCreateContext(dc);
+    if (glContext == null) {
+        printf("failed to create OpenGL context\n");
+        return 1;
+    }
+
+    if (wglMakeCurrent(dc, glContext) == 0) {
+        printf("failed to activate OpenGL context\n");
+        return 1;
+    }
+
+    glEnable(GL_DEPTH_TEST);
+
+    let running: bool = true;
+    let msg: MSG;
+
+    while (running) {
+        while (PeekMessageA(&msg, null, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) {
+                running = false;
+            }
+
+            TranslateMessage(&msg);
+            DispatchMessageA(&msg);
+        }
+
+        let angle: float = (float)(GetTickCount() % 10000) * 0.036;
+        glViewport(0, 0, 800, 600);
+        glClearColor(0.06, 0.07, 0.09, 1.0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        glFrustum(-1.0, 1.0, -0.75, 0.75, 1.0, 100.0);
+
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+        glTranslatef(0.0, 0.0, -5.0);
+        glRotatef(angle, 1.0, 1.0, 0.2);
+        draw_cube();
+
+        SwapBuffers(dc);
+        Sleep(16);
+    }
+
+    wglMakeCurrent(null, null);
+    wglDeleteContext(glContext);
+    ReleaseDC(window, dc);
+    return 0;
+}

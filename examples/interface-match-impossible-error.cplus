@@ -1,0 +1,28 @@
+interface Allocator {
+    fn alloc_bytes(size: usize) -> void*;
+    fn free_bytes(ptr: void*) -> void;
+}
+
+struct Arena: Allocator {
+    fn alloc_bytes(self: Arena*, size: usize) -> void* {
+        return null;
+    }
+
+    fn free_bytes(self: Arena*, ptr: void*) -> void {
+    }
+}
+
+struct Logger {
+    value: int;
+}
+
+fn classify(allocator: Allocator) -> int {
+    match allocator {
+        Logger: logger => return logger.value;
+        _ => return 0;
+    }
+}
+
+fn main() -> int {
+    return 0;
+}

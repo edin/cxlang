@@ -1,0 +1,7 @@
+name = "raytracer"
+kind = "exe"
+sources = ["examples/raytracer.cplus"]
+c_output = "build/c/raytracer.c"
+output = "build/bin/raytracer.exe"
+cc = "gcc"
+cc_args = ["-O2"]

@@ -1,0 +1,18 @@
+struct IntView: Contiguous<int> {
+    data: int*;
+    length: usize;
+}
+
+fn main() -> int {
+    let data: int[2] = { 4, 5 };
+    let view: IntView;
+    view.data = &data[0];
+    view.length = 2;
+
+    let total: int = 0;
+    foreach item in view {
+        total = total + item;
+    }
+
+    return total - 9;
+}

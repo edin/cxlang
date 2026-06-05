@@ -1,0 +1,7 @@
+fn elapsed(start: clock_t) -> int {
+    return 0;
+}
+
+fn main() -> int {
+    return 0;
+}

@@ -1,0 +1,10 @@
+import c.stdio;
+
+extern fn printf(format: const char*, ...) -> int;
+
+type PrintFn = fn(const char*, ...) -> int;
+
+fn main() -> int {
+    printf("answer=%d name=%s\n", 42, "cx");
+    return 0;
+}

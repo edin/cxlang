@@ -1,0 +1,54 @@
+struct KeyCheckIterator: KeyValueIterator<int, int> {
+    keys: int*;
+    values: int*;
+    length: usize;
+    index: usize;
+}
+
+fn KeyCheckIterator.next(self: KeyCheckIterator*) -> bool {
+    if (self.index >= self.length) {
+        return false;
+    }
+
+    self.index = self.index + 1;
+    return true;
+}
+
+fn KeyCheckIterator.key(self: KeyCheckIterator*) -> int* {
+    return &self.keys[self.index - 1];
+}
+
+fn KeyCheckIterator.value(self: KeyCheckIterator*) -> int* {
+    return &self.values[self.index - 1];
+}
+
+struct KeyCheckBag: KeyValueIterable<int, int, KeyCheckIterator> {
+    keys: int*;
+    values: int*;
+    length: usize;
+}
+
+fn KeyCheckBag.iterator(self: KeyCheckBag*) -> KeyCheckIterator {
+    let iterator: KeyCheckIterator;
+    iterator.keys = self.keys;
+    iterator.values = self.values;
+    iterator.length = self.length;
+    iterator.index = 0;
+    return iterator;
+}
+
+fn main() -> int {
+    let keys: int[1] = { 1 };
+    let values: int[1] = { 2 };
+    let bag: KeyCheckBag;
+    bag.keys = &keys[0];
+    bag.values = &values[0];
+    bag.length = 1;
+
+    foreach key => value in bag {
+        key = 10;
+        value = 20;
+    }
+
+    return 0;
+}

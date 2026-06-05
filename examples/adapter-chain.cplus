@@ -1,0 +1,19 @@
+type TextBuffer using ByteBuffer {
+    expose static with_capacity -> Self;
+    expose free;
+    expose write_u8;
+
+    fn len() -> usize {
+        return self.length;
+    }
+}
+
+fn main() -> int {
+    let buffer: TextBuffer = TextBuffer.with_capacity(4);
+    buffer.write_u8((u8)65);
+    buffer.write_u8((u8)66);
+
+    let length: usize = buffer.len();
+    buffer.free();
+    return (int)length - 2;
+}

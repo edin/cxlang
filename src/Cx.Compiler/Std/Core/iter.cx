@@ -1,0 +1,42 @@
+module std.core;
+
+struct Indexed<T> {
+    index: usize;
+    value: T;
+}
+
+struct KeyValue<K, V> {
+    key: K;
+    value: V;
+}
+
+requires Contiguous<T> {
+    data: T*;
+    length: usize;
+}
+
+requires ContiguousRange<T> {
+    start: T*;
+    end: T*;
+}
+
+requires Iterable<T, I>
+where I: Iterator<T> {
+    fn iterator(self: Self*) -> I;
+}
+
+requires Iterator<T> {
+    fn next(self: Self*) -> bool;
+    fn value(self: Self*) -> T*;
+}
+
+requires KeyValueIterable<K, V, I>
+where I: KeyValueIterator<K, V> {
+    fn iterator(self: Self*) -> I;
+}
+
+requires KeyValueIterator<K, V> {
+    fn next(self: Self*) -> bool;
+    fn key(self: Self*) -> K*;
+    fn value(self: Self*) -> V*;
+}

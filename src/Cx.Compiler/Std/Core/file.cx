@@ -1,0 +1,338 @@
+module std.core;
+
+import c.stdio;
+import c.string;
+
+enum FileError {
+    OpenFailed,
+    SizeFailed,
+    OutOfMemory,
+    ReadFailed,
+}
+
+struct File {
+    handle: FILE*;
+}
+
+struct Path {
+}
+
+extension Path {
+    static fn is_separator(ch: int) -> bool {
+        return ch == 47 || ch == 92;
+    }
+
+    static fn file_name(path: StringView) -> StringView {
+        let end: usize = path.length;
+        while (end > 0 && Path.is_separator(path.data[end - 1])) {
+            end -= 1;
+        }
+
+        let start: usize = end;
+        while (start > 0 && !Path.is_separator(path.data[start - 1])) {
+            start -= 1;
+        }
+
+        return path.slice(start, end - start);
+    }
+
+    static fn directory_name(path: StringView) -> StringView {
+        let end: usize = path.length;
+        while (end > 0 && Path.is_separator(path.data[end - 1])) {
+            end -= 1;
+        }
+
+        let start: usize = end;
+        while (start > 0 && !Path.is_separator(path.data[start - 1])) {
+            start -= 1;
+        }
+
+        if (start == 0) {
+            return StringView.empty();
+        }
+
+        if (start == 1 && Path.is_separator(path.data[0])) {
+            return path.slice(0, 1);
+        }
+
+        return path.slice(0, start - 1);
+    }
+
+    static fn ext(path: StringView) -> StringView {
+        let name: StringView = Path.file_name(path);
+        let index: usize = name.length;
+        while (index > 0) {
+            index -= 1;
+            if (name.data[index] == 46) {
+                if (index == 0) {
+                    return StringView.empty();
+                }
+
+                return name.slice(index + 1, name.length - index - 1);
+            }
+        }
+
+        return StringView.empty();
+    }
+
+    static fn stem(path: StringView) -> StringView {
+        let name: StringView = Path.file_name(path);
+        let index: usize = name.length;
+        while (index > 0) {
+            index -= 1;
+            if (name.data[index] == 46) {
+                if (index == 0) {
+                    return name;
+                }
+
+                return name.slice(0, index);
+            }
+        }
+
+        return name;
+    }
+
+    static fn has_extension(path: StringView, ext: StringView) -> bool {
+        let actual: StringView = Path.ext(path);
+        return StringView.equals(actual, ext);
+    }
+}
+
+extension File {
+    static fn open(path: const char*, mode: const char*) -> Option<File> {
+        let handle: FILE* = fopen(path, mode);
+        if (handle == null) {
+            return Option.none<File>();
+        }
+
+        return Option.some<File>(File { handle: handle });
+    }
+
+    static fn read_all(path: const char*) -> Option<ByteBuffer> {
+        return File.read_all_with_allocator(path, Allocator.default());
+    }
+
+    static fn read_all_with_allocator(path: const char*, allocator: Allocator*) -> Option<ByteBuffer> {
+        let result: Result<ByteBuffer, FileError> = File.read_all_result_with_allocator(path, allocator);
+        if (result.is_error()) {
+            return Option.none<ByteBuffer>();
+        }
+
+        return Option.some<ByteBuffer>(result.value);
+    }
+
+    static fn read_all_result(path: const char*) -> Result<ByteBuffer, FileError> {
+        return File.read_all_result_with_allocator(path, Allocator.default());
+    }
+
+    static fn read_all_result_with_allocator(path: const char*, allocator: Allocator*) -> Result<ByteBuffer, FileError> {
+        let opened: Option<File> = File.open(path, "rb");
+        if (!opened.has_value) {
+            return Result.err<ByteBuffer, FileError>(FileError.OpenFailed);
+        }
+
+        let file: File = opened.value;
+        let size_result: Option<usize> = file.size();
+        if (!size_result.has_value) {
+            file.close();
+            return Result.err<ByteBuffer, FileError>(FileError.SizeFailed);
+        }
+
+        let size: usize = size_result.value;
+        let buffer: ByteBuffer = ByteBuffer.with_allocator(allocator, size);
+        if (size > 0 && buffer.data == null) {
+            file.close();
+            return Result.err<ByteBuffer, FileError>(FileError.OutOfMemory);
+        }
+
+        buffer.length = size;
+        let read_count: usize = 0;
+        if (size > 0) {
+            read_count = file.read(buffer.data, size);
+        }
+
+        file.close();
+        if (read_count != size) {
+            buffer.free();
+            return Result.err<ByteBuffer, FileError>(FileError.ReadFailed);
+        }
+
+        return Result.ok<ByteBuffer, FileError>(buffer);
+    }
+
+    static fn write_all(path: const char*, data: u8*, length: usize) -> bool {
+        let opened: Option<File> = File.open(path, "wb");
+        if (!opened.has_value) {
+            return false;
+        }
+
+        let file: File = opened.value;
+        let written: usize = file.write(data, length);
+        let closed: bool = file.close();
+        return written == length && closed;
+    }
+
+    static fn write_text(path: const char*, text: const char*) -> bool {
+        return File.write_all(path, (u8*)text, strlen(text));
+    }
+
+    static fn write_view(path: const char*, text: StringView) -> bool {
+        return File.write_all(path, (u8*)text.data, text.length);
+    }
+
+    static fn exists(path: const char*) -> bool {
+        let opened: Option<File> = File.open(path, "rb");
+        if (!opened.has_value) {
+            return false;
+        }
+
+        let file: File = opened.value;
+        file.close();
+        return true;
+    }
+
+    static fn size_of(path: const char*) -> Option<usize> {
+        let opened: Option<File> = File.open(path, "rb");
+        if (!opened.has_value) {
+            return Option.none<usize>();
+        }
+
+        let file: File = opened.value;
+        let size: Option<usize> = file.size();
+        file.close();
+        return size;
+    }
+
+    static fn remove(path: const char*) -> bool {
+        return remove(path) == 0;
+    }
+
+    static fn rename(old_path: const char*, new_path: const char*) -> bool {
+        return rename(old_path, new_path) == 0;
+    }
+
+    fn is_open() -> bool {
+        return self.handle != null;
+    }
+
+    fn read(data: u8*, length: usize) -> usize {
+        if (self.handle == null || data == null || length == 0) {
+            return 0;
+        }
+
+        return fread(data, sizeof(u8), length, self.handle);
+    }
+
+    fn write(data: u8*, length: usize) -> usize {
+        if (self.handle == null || data == null || length == 0) {
+            return 0;
+        }
+
+        return fwrite(data, sizeof(u8), length, self.handle);
+    }
+
+    fn flush() -> bool {
+        if (self.handle == null) {
+            return false;
+        }
+
+        return fflush(self.handle) == 0;
+    }
+
+    fn seek(offset: long, origin: int) -> bool {
+        if (self.handle == null) {
+            return false;
+        }
+
+        return fseek(self.handle, offset, origin) == 0;
+    }
+
+    fn tell() -> Option<usize> {
+        if (self.handle == null) {
+            return Option.none<usize>();
+        }
+
+        let position: long = ftell(self.handle);
+        if (position < 0) {
+            return Option.none<usize>();
+        }
+
+        return Option.some<usize>((usize)position);
+    }
+
+    fn size() -> Option<usize> {
+        if (self.handle == null) {
+            return Option.none<usize>();
+        }
+
+        let original: long = ftell(self.handle);
+        if (original < 0) {
+            return Option.none<usize>();
+        }
+
+        if (fseek(self.handle, 0, SEEK_END) != 0) {
+            return Option.none<usize>();
+        }
+
+        let size: long = ftell(self.handle);
+        fseek(self.handle, original, SEEK_SET);
+        if (size < 0) {
+            return Option.none<usize>();
+        }
+
+        return Option.some<usize>((usize)size);
+    }
+
+    fn close() -> bool {
+        if (self.handle == null) {
+            return true;
+        }
+
+        let result: int = fclose(self.handle);
+        self.handle = null;
+        return result == 0;
+    }
+}
+
+test "path parts" {
+    let path: StringView = StringView.from_cstr("src/core/file.cx");
+    expect_eq_string_view(StringView.from_cstr("file.cx"), Path.file_name(path));
+    expect_eq_string_view(StringView.from_cstr("src/core"), Path.directory_name(path));
+    expect_eq_string_view(StringView.from_cstr("cx"), Path.ext(path));
+    expect_eq_string_view(StringView.from_cstr("file"), Path.stem(path));
+    expect_true(Path.has_extension(path, StringView.from_cstr("cx")));
+    expect_false(Path.has_extension(path, StringView.from_cstr("txt")));
+}
+
+test "path handles separators and missing extension" {
+    let windows_path: StringView = StringView.from_cstr("build\\output\\program");
+    expect_eq_string_view(StringView.from_cstr("program"), Path.file_name(windows_path));
+    expect_eq_string_view(StringView.from_cstr("build\\output"), Path.directory_name(windows_path));
+    let ext: StringView = Path.ext(windows_path);
+    expect_true(ext.is_empty());
+    expect_eq_string_view(StringView.from_cstr("program"), Path.stem(windows_path));
+}
+
+test "file write read size and remove" {
+    let path: const char* = "build/std-core-file-test.txt";
+    let text: StringView = StringView.from_cstr("hello file\n");
+
+    File.remove(path);
+    expect_true(File.write_view(path, text));
+    expect_true(File.exists(path));
+
+    let size: Option<usize> = File.size_of(path);
+    expect_true(size.has_value);
+    expect_eq_usize(text.length, size.value);
+
+    let bytes: Option<ByteBuffer> = File.read_all(path);
+    expect_true(bytes.has_value);
+
+    let loaded: ByteBuffer = bytes.value;
+    let loaded_text: StringView = StringView.from_bytes(loaded.data, loaded.length);
+    expect_eq_string_view(text, loaded_text);
+
+    loaded.free();
+    expect_true(File.remove(path));
+    expect_false(File.exists(path));
+}

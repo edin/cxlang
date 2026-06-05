@@ -1,0 +1,27 @@
+module examples.cstdio;
+
+declare <stdio.h> {
+    type FILE = opaque;
+
+    macro const EOF: int;
+    macro const SEEK_SET: int;
+    macro const SEEK_CUR: int;
+    macro const SEEK_END: int;
+
+    fn printf(format: const char*, ...) -> int;
+    fn fopen(path: const char*, mode: const char*) -> FILE*;
+    fn fclose(stream: FILE*) -> int;
+    fn fseek(stream: FILE*, offset: long, origin: int) -> int;
+}
+
+fn main() -> int {
+    printf("SEEK_END=%d EOF=%d\n", SEEK_END, EOF);
+
+    let file: FILE* = fopen("missing-file.txt", "rb");
+    if (file != null) {
+        fseek(file, 0, SEEK_END);
+        fclose(file);
+    }
+
+    return 0;
+}

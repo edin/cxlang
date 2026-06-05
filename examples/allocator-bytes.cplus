@@ -1,0 +1,21 @@
+fn main() -> int {
+    let allocator: Allocator* = Allocator.default();
+
+    let memory: void* = allocator.allocate_bytes(16);
+    if (memory == null) {
+        return 1;
+    }
+
+    memory = allocator.resize_bytes(memory, 16, 32);
+    if (memory == null) {
+        return 2;
+    }
+
+    let bytes: u8* = (u8*)memory;
+    bytes[0] = (u8)42;
+    bytes[31] = (u8)7;
+
+    let result: int = (int)bytes[0] + (int)bytes[31];
+    allocator.free_bytes(memory, 32);
+    return result - 49;
+}

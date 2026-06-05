@@ -1,0 +1,13 @@
+import c.stdio as io;
+import c.time as time;
+
+fn main() -> int {
+    let start: time.clock_t = time.clock();
+    let ticks_per_second: time.clock_t = time.CLOCKS_PER_SEC;
+    let elapsed: time.clock_t = time.clock() - start;
+
+    io.printf("ticks_per_second=%lld elapsed=%lld\n",
+        (long long)ticks_per_second,
+        (long long)elapsed);
+    return 0;
+}

@@ -1,0 +1,22 @@
+struct Counter {
+    value: int;
+
+    static fn create(value: int) -> Counter {
+        return Counter { value: value };
+    }
+
+    fn add(amount: int) -> void {
+        self.value = self.value + amount;
+    }
+}
+
+fn Counter.take(amount: int) -> void {
+    self.value = self.value - amount;
+}
+
+fn main() -> int {
+    let counter: Counter = Counter.create(10);
+    counter.add(5);
+    counter.take(3);
+    return counter.value - 12;
+}

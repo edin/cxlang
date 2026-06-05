@@ -1,0 +1,9 @@
+declare "c-macros.h" {
+    macro fn CX_MAX<T>(left: T, right: T) -> T;
+    macro fn CX_DISCARD(value: any) -> void;
+}
+
+fn main() -> int {
+    CX_DISCARD("anything");
+    return CX_MAX<int>(40, 42) - 42;
+}

@@ -1,0 +1,18 @@
+struct Config {
+    width: int;
+    height: int;
+}
+
+const scale: int = 2;
+const default_config: Config = { 40, 50 };
+let runs: int = 0;
+
+fn area(config: Config*) -> int {
+    runs += 1;
+    return config.width * config.height * scale;
+}
+
+fn main() -> int {
+    let config: Config = default_config;
+    return area(&config) + runs - 4001;
+}

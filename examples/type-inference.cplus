@@ -1,0 +1,31 @@
+import c.stdio;
+
+const banner = "type inference";
+
+fn add(left: int, right: int) -> int {
+    return left + right;
+}
+
+fn identity<T>(value: T) -> T {
+    return value;
+}
+
+fn main() -> int {
+    let x = 5;
+    let y = 2.5;
+    let ok = true;
+    let own = identity(5);
+    let maybe = Option.some(123);
+    let sum = add(own, 3);
+    let values = Vec<int>.with_capacity(2);
+    values.push(10);
+    values.push(identity(20));
+
+    for (let i = 0; i < 3; i++) {
+        sum = sum + i;
+    }
+
+    printf("%s: x=%d y=%.1f ok=%d some=%d len=%zu sum=%d\n", banner, x, y, ok, maybe.value, values.length, sum);
+    values.free();
+    return 0;
+}

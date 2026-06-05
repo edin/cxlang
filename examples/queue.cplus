@@ -1,0 +1,34 @@
+fn main() -> int {
+    let queue: Queue<int> = Queue<int>.with_capacity(3);
+    queue.enqueue(1);
+    queue.enqueue(2);
+    queue.enqueue(3);
+
+    let first: Option<int> = queue.dequeue();
+    let second: Option<int> = queue.dequeue();
+
+    queue.enqueue(4);
+    queue.enqueue(5);
+    queue.enqueue(6);
+    queue.enqueue(7);
+
+    let peeked: Option<int> = queue.peek();
+    let third: Option<int> = queue.dequeue();
+    let fourth: Option<int> = queue.dequeue();
+    let fifth: Option<int> = queue.dequeue();
+    let sixth: Option<int> = queue.dequeue();
+    let seventh: Option<int> = queue.dequeue();
+    let empty: bool = queue.is_empty();
+
+    queue.free();
+    return first.value
+        + second.value
+        + peeked.value
+        + third.value
+        + fourth.value
+        + fifth.value
+        + sixth.value
+        + seventh.value
+        + empty
+        - 32;
+}

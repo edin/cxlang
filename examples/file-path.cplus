@@ -1,0 +1,40 @@
+fn main() -> int {
+    let path: const char* = "build/file-path-sample.txt";
+
+    if (!File.write_text(path, "hello cx file\n")) {
+        return 1;
+    }
+
+    if (!File.exists(path)) {
+        return 2;
+    }
+
+    let size: Option<usize> = File.size_of(path);
+    if (!size.has_value || size.value != 14) {
+        return 3;
+    }
+
+    let bytes: Option<ByteBuffer> = File.read_all(path);
+    if (!bytes.has_value) {
+        return 4;
+    }
+
+    let buffer: ByteBuffer = bytes.value;
+    if (buffer.length != 14) {
+        buffer.free();
+        return 5;
+    }
+
+    if (buffer.data[0] != 'h' || buffer.data[13] != '\n') {
+        buffer.free();
+        return 6;
+    }
+
+    buffer.free();
+
+    if (!File.remove(path)) {
+        return 7;
+    }
+
+    return 0;
+}

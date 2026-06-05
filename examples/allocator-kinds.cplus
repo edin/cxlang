@@ -1,0 +1,30 @@
+import c.stdio;
+
+fn use_allocator(allocator: Allocator*) -> int {
+    let values: int* = (int*)allocator.allocate(2 * sizeof(int), 4);
+    if (values == null) {
+        return -1;
+    }
+
+    values[0] = 20;
+    values[1] = 22;
+    return values[0] + values[1];
+}
+
+fn main() -> int {
+    let buffer: u8[128];
+    let fixed: FixedBufferAllocator = FixedBufferAllocator.from_buffer(&buffer[0], 128);
+    let fixed_allocator: Allocator = fixed;
+    let fixed_result: int = use_allocator(&fixed_allocator);
+
+    fixed.reset();
+
+    let arena: ArenaAllocator = ArenaAllocator.create(128);
+    let arena_allocator: Allocator = arena;
+    let arena_result: int = use_allocator(&arena_allocator);
+
+    arena.dispose();
+
+    printf("fixed=%d arena=%d\n", fixed_result, arena_result);
+    return (fixed_result - 42) + (arena_result - 42);
+}

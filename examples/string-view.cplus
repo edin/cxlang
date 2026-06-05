@@ -1,0 +1,18 @@
+import c.stdio;
+
+fn main() -> int {
+    let text: StringView = StringView.from_cstr("users/42/posts");
+    let prefix: StringView = StringView.from_cstr("users");
+    let id: StringView = text.slice(6, 2);
+    let parsed: Option<int> = id.parse_int();
+
+    printf("text=");
+    text.print();
+    printf("\n");
+
+    printf("prefix=%d id=", text.starts_with(prefix));
+    id.print();
+    printf(" parsed=%d\n", parsed.unwrap_or<int>(0));
+
+    return 0;
+}

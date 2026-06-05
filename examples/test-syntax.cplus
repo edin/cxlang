@@ -1,0 +1,12 @@
+test "string trim" {
+    let text: StringView = StringView.from_cstr(" hi ");
+    let trimmed: StringView = text.trim();
+    expect(trimmed.equals_cstr("hi"));
+}
+
+test "parse int" {
+    let text: StringView = StringView.from_cstr("42");
+    let value: Option<int> = text.parse_int();
+    expect(value.has_value);
+    expect(value.value == 42);
+}

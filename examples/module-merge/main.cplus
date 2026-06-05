@@ -1,0 +1,7 @@
+module app.main;
+
+fn main() -> int {
+    let values: Vec<int>;
+    values.length = 7;
+    return values.debug_length() - 7;
+}

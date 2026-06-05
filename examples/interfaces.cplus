@@ -1,0 +1,97 @@
+import c.stdio;
+import c.stdlib;
+
+struct Arena: Allocator {
+    data: u8*;
+    capacity: usize;
+    offset: usize;
+
+    static fn create(capacity: usize) -> Arena {
+        return Arena {
+            data: (u8*)malloc(capacity),
+            capacity: capacity,
+            offset: 0
+        };
+    }
+}
+
+fn Arena.allocate(self: Arena*, size: usize, align: usize) -> void* {
+    if (self.offset + size > self.capacity) {
+        return null;
+    }
+
+    let result: void* = &self.data[self.offset];
+    self.offset += size;
+    return result;
+}
+
+fn Arena.resize(self: Arena*, ptr: void*, old_size: usize, new_size: usize, align: usize) -> void* {
+    return null;
+}
+
+fn Arena.free(self: Arena*, ptr: void*, size: usize, align: usize) -> void {
+    /* arena frees all memory at once */
+}
+
+fn Arena.dispose(self: Arena*) -> void {
+    free(self.data);
+    self.data = null;
+    self.capacity = 0;
+    self.offset = 0;
+}
+
+fn allocate_int<A>(allocator: A*) -> int*
+where A: Allocator {
+    return (int*)allocator.allocate(sizeof(int), 4);
+}
+
+fn allocator_kind(allocator: Allocator) -> int {
+    match allocator {
+        Arena: arena => {
+            let scratch: void* = arena.allocate(4, 4);
+            if (scratch == null) {
+                return 0;
+            }
+
+            return 1;
+        }
+        _ => return 0;
+    }
+}
+
+fn allocator_kind_ptr(allocator: Allocator*) -> int {
+    match allocator {
+        Arena: arena => {
+            let scratch: void* = arena.allocate(4, 4);
+            if (scratch == null) {
+                return 0;
+            }
+
+            return 2;
+        }
+        _ => return 0;
+    }
+}
+
+fn main() -> int {
+    let arena: Arena = Arena.create(1024);
+    let allocator: Allocator = arena;
+    let memory: int* = allocate_int<Arena>(&arena);
+
+    if (memory == null) {
+        printf("allocation failed\n");
+        arena.dispose();
+        return 1;
+    }
+
+    *memory = 42;
+    printf("allocated=%d\n", *memory);
+
+    allocator.free(memory, sizeof(int), 4);
+    let extra: void* = allocator.allocate(8, 4);
+    allocator.free(extra, 8, 4);
+    let kind: int = allocator_kind(allocator);
+    let pointerKind: int = allocator_kind_ptr(&allocator);
+    arena.dispose();
+    return (kind == 1 && pointerKind == 2) ? 0 : 1;
+}

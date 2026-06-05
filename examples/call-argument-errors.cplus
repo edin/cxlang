@@ -1,0 +1,19 @@
+declare <stdio.h> {
+    type FILE = opaque;
+
+    fn printf(format: const char*, ...) -> int;
+    fn fopen(path: const char*, mode: const char*) -> FILE*;
+    fn fclose(stream: FILE*) -> int;
+}
+
+fn add(left: int, right: int) -> int {
+    return left + right;
+}
+
+fn main() -> int {
+    fopen(123, "rb");
+    fclose("not a file");
+    add(1);
+    printf(10);
+    return 0;
+}

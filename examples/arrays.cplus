@@ -1,0 +1,23 @@
+struct Buffer {
+    values: int[3];
+}
+
+fn sum(values: int[3]) -> int {
+    let total: int = 0;
+
+    for (let i: int = 0; i < 3; i += 1) {
+        total += values[i];
+    }
+
+    return total;
+}
+
+fn main() -> int {
+    let values: int[3] = { 10, 20, 12 };
+    let buffer: Buffer;
+    buffer.values[0] = values[0];
+    buffer.values[1] = values[1];
+    buffer.values[2] = values[2];
+
+    return sum(buffer.values) - 42;
+}

@@ -1,0 +1,4 @@
+fn main() -> int {
+    let start: clock_t = clock();
+    return 0;
+}

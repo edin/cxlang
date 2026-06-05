@@ -1,0 +1,28 @@
+import c.stdio;
+
+fn main() -> int {
+    let c_allocator: CAllocator = CAllocator.create();
+    let allocator: Allocator = c_allocator;
+
+    let values: int* = (int*)allocator.allocate(2 * sizeof(int), 4);
+    if (values == null) {
+        printf("allocation failed\n");
+        return 1;
+    }
+
+    values[0] = 21;
+    values[1] = 21;
+
+    values = (int*)allocator.resize(values, 2 * sizeof(int), 3 * sizeof(int), 4);
+    if (values == null) {
+        printf("resize failed\n");
+        return 1;
+    }
+
+    values[2] = values[0] + values[1];
+    printf("value=%d\n", values[2]);
+
+    let result: int = values[2] - 42;
+    allocator.free(values, 3 * sizeof(int), 4);
+    return result;
+}

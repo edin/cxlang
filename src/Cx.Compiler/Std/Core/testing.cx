@@ -1,0 +1,172 @@
+module std.core;
+
+import c.stdio;
+
+struct TestRunner {
+    passed: int;
+    failed: int;
+    current_failed: bool;
+    current_name: const char*;
+}
+
+extension TestRunner {
+    static fn create() -> TestRunner {
+        return TestRunner {
+            passed: 0,
+            failed: 0,
+            current_failed: false,
+            current_name: ""
+        };
+    }
+
+    fn begin(name: const char*) -> void {
+        self.current_failed = false;
+        self.current_name = name;
+    }
+
+    fn expect(condition: bool, message: const char*) -> void {
+        if (condition) {
+            return;
+        }
+
+        self.fail(message);
+    }
+
+    fn fail(message: const char*) -> void {
+        if (!self.current_failed) {
+            printf("FAIL: %s\n", self.current_name);
+        }
+
+        self.current_failed = true;
+        printf("  %s\n", message);
+    }
+
+    fn expect_bool(expected: bool, actual: bool, message: const char*) -> void {
+        if (expected == actual) {
+            return;
+        }
+
+        self.fail(message);
+        printf("    expected: %d\n", expected);
+        printf("    actual:   %d\n", actual);
+    }
+
+    fn expect_true(actual: bool, message: const char*) -> void {
+        self.expect_bool(true, actual, message);
+    }
+
+    fn expect_false(actual: bool, message: const char*) -> void {
+        self.expect_bool(false, actual, message);
+    }
+
+    fn expect_int(expected: int, actual: int, message: const char*) -> void {
+        if (expected == actual) {
+            return;
+        }
+
+        self.fail(message);
+        printf("    expected: %d\n", expected);
+        printf("    actual:   %d\n", actual);
+    }
+
+    fn expect_u64(expected: u64, actual: u64, message: const char*) -> void {
+        if (expected == actual) {
+            return;
+        }
+
+        self.fail(message);
+        printf("    expected: %llu\n", expected);
+        printf("    actual:   %llu\n", actual);
+    }
+
+    fn expect_usize(expected: usize, actual: usize, message: const char*) -> void {
+        if (expected == actual) {
+            return;
+        }
+
+        self.fail(message);
+        printf("    expected: %llu\n", expected);
+        printf("    actual:   %llu\n", actual);
+    }
+
+    fn expect_double(expected: double, actual: double, message: const char*) -> void {
+        if (expected == actual) {
+            return;
+        }
+
+        self.fail(message);
+        printf("    expected: %f\n", expected);
+        printf("    actual:   %f\n", actual);
+    }
+
+    fn expect_near_double(expected: double, actual: double, tolerance: double, message: const char*) -> void {
+        let diff: double = expected - actual;
+        if (diff < 0.0) {
+            diff = -diff;
+        }
+
+        if (diff <= tolerance) {
+            return;
+        }
+
+        self.fail(message);
+        printf("    expected: %f\n", expected);
+        printf("    actual:   %f\n", actual);
+        printf("    tolerance: %f\n", tolerance);
+    }
+
+    fn expect_string(expected: const char*, actual: const char*, message: const char*) -> void {
+        let expected_view: StringView = StringView.from_cstr(expected);
+        let actual_view: StringView = StringView.from_cstr(actual);
+        self.expect_string_view(expected_view, actual_view, message);
+    }
+
+    fn expect_string_view(expected: StringView, actual: StringView, message: const char*) -> void {
+        if (StringView.equals(expected, actual)) {
+            return;
+        }
+
+        self.fail(message);
+        printf("    expected: %.*s\n", (int)expected.length, expected.data);
+        printf("    actual:   %.*s\n", (int)actual.length, actual.data);
+    }
+
+    fn expect_null(actual: void*, message: const char*) -> void {
+        if (actual == null) {
+            return;
+        }
+
+        self.fail(message);
+        printf("    expected: null\n");
+        printf("    actual:   %p\n", actual);
+    }
+
+    fn expect_not_null(actual: void*, message: const char*) -> void {
+        if (actual != null) {
+            return;
+        }
+
+        self.fail(message);
+        printf("    expected: not null\n");
+        printf("    actual:   null\n");
+    }
+
+    fn end() -> void {
+        if (self.current_failed) {
+            self.failed += 1;
+            return;
+        }
+
+        self.passed += 1;
+        printf("PASS: %s\n", self.current_name);
+    }
+
+    fn result() -> int {
+        printf("\n%d passed, %d failed\n", self.passed, self.failed);
+        if (self.failed > 0) {
+            return 1;
+        }
+
+        return 0;
+    }
+}

@@ -1,0 +1,24 @@
+import c.stdio;
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+fn main() -> int {
+    let base: int = 10;
+    let first: Point = Point {
+        x: base + 1,
+        y: base > 5 ? 20 : 30
+    };
+    let second: Point = {
+        x: first.x + 1,
+        y: first.y + 1
+    };
+    let values: int[3] = { first.x, second.x, second.y };
+    printf("first=%d,%d second=%d,%d values=%d,%d,%d\n",
+        first.x, first.y,
+        second.x, second.y,
+        values[0], values[1], values[2]);
+    return 0;
+}

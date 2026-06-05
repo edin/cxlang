@@ -1,0 +1,6 @@
+import std.bitmap;
+
+fn main() -> int {
+    printf("stdio is a private dependency of std.bitmap\n");
+    return 0;
+}

@@ -1,0 +1,18 @@
+fn main() -> int {
+    let bytes: Option<ByteBuffer> = File.read_all("examples/string-view.cplus");
+    if (!bytes.has_value) {
+        return 1;
+    }
+
+    if (bytes.value.length == 0) {
+        bytes.free();
+        return 2;
+    }
+
+    bytes.free();
+    if (bytes.has_value) {
+        return 3;
+    }
+
+    return 0;
+}

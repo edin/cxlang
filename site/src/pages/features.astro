@@ -1,0 +1,398 @@
+---
+import { Code } from "astro:components";
+import CxCode from "../components/CxCode.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const sections = [
+  {
+    title: "Program Shape",
+    intro: "Modules, imports, aliases, and C declarations describe what a CX file sees.",
+    features: [
+      {
+        name: "Hello CX",
+        code: `import c.stdio;
+
+fn main() -> int {
+    let program: char* = "+ + * s - /";
+    let accumulator: int = 0;
+
+    foreach token in StringView.from_cstr(program) {
+        switch (token) {
+            case '+': accumulator += 1;
+            case '-': accumulator -= 1;
+            case '*': accumulator *= 2;
+            case '/': accumulator /= 2;
+            case 's': accumulator *= accumulator;
+            default: { }
+        }
+    }
+
+    printf("program \\"%s\\" => %d\\n", program, accumulator);
+    return 0;
+}`
+      },
+      {
+        name: "Modules and Imports",
+        code: `module app.main;
+
+import std.core;
+import c.stdio as io;
+from c.math import sqrt;`
+      },
+      {
+        name: "C Declarations",
+        code: `module c.stdio;
+
+declare <stdio.h> {
+    type FILE = opaque;
+    const EOF: int;
+    fn printf(format: const char*, ...) -> int;
+}`
+      },
+      {
+        name: "Type Aliases",
+        code: `type Bytes = Slice<u8>;
+type IntVec = Vec<int>;
+type CompareFn = fn(int, int) -> int;`
+      }
+    ]
+  },
+  {
+    title: "Functions and Data",
+    intro: "CX keeps C's explicit data model, then adds syntax that removes repetitive boilerplate.",
+    features: [
+      {
+        name: "Functions",
+        code: `fn add(a: int, b: int) -> int {
+    return a + b;
+}`
+      },
+      {
+        name: "Structs and Initializers",
+        code: `struct Point {
+    x: double;
+    y: double;
+}
+
+let p: Point = Point { x: 10.0, y: 20.0 };
+let q: Point = Point(1.0, 2.0);`
+      },
+      {
+        name: "Static and Instance Methods",
+        code: `extension Point {
+    static fn origin() -> Point {
+        return Point(0.0, 0.0);
+    }
+
+    fn distance(other: Point) -> double {
+        let dx = self.x - other.x;
+        let dy = self.y - other.y;
+        return sqrt(dx * dx + dy * dy);
+    }
+}`
+      }
+    ]
+  },
+  {
+    title: "Control Flow",
+    intro: "Common C-style control flow stays recognizable, with foreach and match for higher-level code.",
+    features: [
+      {
+        name: "If, While, For",
+        code: `if (value > 0) {
+    total += value;
+} else if (value < 0) {
+    total -= value;
+}
+
+while (total < 100) {
+    total += 1;
+}
+
+for (let i: int = 0; i < 10; i += 1) {
+    total += i;
+}`
+      },
+      {
+        name: "Foreach",
+        code: `foreach value in values {
+    printf("%d\\n", value);
+}
+
+foreach index, value in values {
+    printf("%d: %d\\n", index, value);
+}
+
+foreach key => value in map {
+    printf("%d -> %d\\n", key, value);
+}`
+      },
+      {
+        name: "Switch",
+        code: `switch (surface) {
+    case SHINY_SURFACE: {
+        return 1;
+    }
+    default: {
+        return 0;
+    }
+}`
+      }
+    ]
+  },
+  {
+    title: "Types With Teeth",
+    intro: "Generics, type wrappers, tagged unions, interfaces, and requirements make reusable native code easier to write.",
+    features: [
+      {
+        name: "Generics",
+        code: `let numbers: Vec<int> = Vec<int>.with_capacity(16);
+numbers.add(10);
+numbers.add(20);
+
+let names: Vec<StringView> = Vec<StringView>.create();`
+      },
+      {
+        name: "Type Wrappers",
+        code: `type Stack<T> using Vec<T> {
+    expose static with_capacity -> Self;
+    expose add as push;
+    expose pop;
+    expose free;
+}
+
+extension Stack<T> {
+    fn peek() -> Option<T> {
+        if (self.length == 0) {
+            return Option.none<T>();
+        }
+
+        return Option.some<T>(self.data[self.length - 1]);
+    }
+}`
+      },
+      {
+        name: "Tagged Unions and Match",
+        code: `union Expr {
+    Number: int;
+    Binary: BinaryExpr;
+}
+
+fn eval(expr: Expr*) -> int {
+    match expr {
+        Number: n => return n;
+        Binary: b => return eval_binary(&b);
+        _ => return 0;
+    }
+}`
+      },
+      {
+        name: "Interfaces",
+        code: `interface Allocator {
+    fn allocate(size: usize, align: usize) -> void*;
+    fn resize(ptr: void*, old_size: usize, new_size: usize, align: usize) -> void*;
+    fn free(ptr: void*, size: usize, align: usize) -> void;
+}
+
+let arena: ArenaAllocator = ArenaAllocator.create(4096);
+let allocator: Allocator = arena;
+let memory: void* = allocator.allocate(128, 8);`
+      },
+      {
+        name: "Requirements",
+        code: `requires Equal<T> {
+    static fn equals(left: T, right: T) -> bool;
+}
+
+struct HashSet<T> where T: Hash<T> + Equal<T> {
+    entries: Vec<T>;
+}`
+      },
+      {
+        name: "Constrained Extensions",
+        code: `requires Disposable<T> {
+    fn free(self: Self*) -> void;
+}
+
+extension Option<T>
+where T: Disposable<T> {
+    fn free() -> void {
+        if (self.has_value) {
+            self.value.free();
+            self.has_value = false;
+        }
+    }
+}`
+      }
+    ]
+  },
+  {
+    title: "Expressions and Operators",
+    intro: "Most C-compatible expressions stay intact, while CX adds a few semantic conveniences.",
+    features: [
+      {
+        name: "Pointer Field Lowering",
+        code: `fn read(point: Point*) -> double {
+    return point.x + point.y;
+}`
+      },
+      {
+        name: "Null and Bool Literals",
+        code: `let node: Node* = null;
+let ok: bool = true;
+
+if (node == null) {
+    return false;
+}`
+      },
+      {
+        name: "Three-way Compare",
+        code: `requires Compare<T> {
+    static fn compare(left: T, right: T) -> int;
+}
+
+let order: int = left <=> right;`
+      },
+      {
+        name: "Lambdas",
+        code: `let compare: fn(int, int) -> int =
+    fn(left: int, right: int) => left <=> right;`
+      }
+    ]
+  },
+  {
+    title: "Standard Library",
+    intro: "The current core library stays small, but it covers the primitives needed for practical examples.",
+    features: [
+      {
+        name: "Options and Results",
+        code: `let parsed: Option<int> = text.parse_int();
+if (parsed.has_value) {
+    printf("%d\\n", parsed.value);
+}
+
+let file: Result<File, Error> = File.open("data.txt");`
+      },
+      {
+        name: "Strings and Builders",
+        code: `let text: StringView = StringView.from_cstr(" hi ");
+let trimmed: StringView = text.trim();
+
+let builder: StringBuilder = StringBuilder.create();
+builder.append_cstr("hello");
+builder.append_char(' ');
+builder.append_cstr("cx");`
+      },
+      {
+        name: "Collections",
+        code: `let map: HashMap<StringView, int> = HashMap<StringView, int>.create();
+map.put(StringView.from_cstr("/health"), 200);
+
+let stack: Stack<int> = Stack<int>.create();
+stack.push(42);`
+      },
+      {
+        name: "Bitmap",
+        code: `let bitmap: Bitmap = Bitmap.create(640, 480);
+bitmap.clear(Color32 { r: 16, g: 16, b: 16, a: 255 });
+*bitmap.pixel(10, 10) = Color32 { r: 255, g: 0, b: 0, a: 255 };
+bitmap.save("image.bmp");
+bitmap.free();`
+      }
+    ]
+  },
+  {
+    title: "Tooling",
+    intro: "The compiler and CLI are part of the language experience, not an afterthought.",
+    features: [
+      {
+        name: "Project Config",
+        lang: "toml",
+        code: `name = "raytracer"
+kind = "exe"
+sources = ["examples/raytracer.cplus"]
+output = "build/bin/raytracer.exe"
+c_output = "build/c/raytracer.c"
+cc = "gcc"
+cc_args = ["-O2", "-lm"]`
+      },
+      {
+        name: "CLI Commands",
+        lang: "bash",
+        code: `cx init
+cx run
+cx test
+cx test --std
+cx transpile examples/raytracer.cplus`
+      },
+      {
+        name: "Test Blocks",
+        code: `test "parse int" {
+    let value: Option<int> = StringView.from_cstr("42").parse_int();
+    expect(value.has_value);
+    expect(value.value == 42);
+}`
+      }
+    ]
+  }
+];
+---
+
+<BaseLayout
+  title="CX Language Features"
+  description="A catalog of CX language features with concise code samples."
+>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="CX home">
+      <span>CX Lang</span>
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="/">Home</a>
+      <a href="/features">Features</a>
+      <a href="/#examples">Examples</a>
+      <a href="/#cli">CLI</a>
+      <a href="https://github.com/edin/cxlang">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="page-hero feature-page-hero" aria-labelledby="features-title">
+      <p class="eyebrow">Language catalog</p>
+      <h1 id="features-title">CX Features</h1>
+      <p>
+        A living checklist of what the compiler supports today, with small samples
+        that show how each feature feels in real code.
+      </p>
+    </section>
+
+    <section class="feature-index section-band light" aria-label="Feature sections">
+      {sections.map((section) => <a href={`#${section.title.toLowerCase().replaceAll(" ", "-")}`}>{section.title}</a>)}
+    </section>
+
+    {sections.map((section, index) => (
+      <section
+        class:list={["feature-section", "section-band", index % 2 === 0 ? "" : "light"]}
+        id={section.title.toLowerCase().replaceAll(" ", "-")}
+        aria-labelledby={`${section.title.toLowerCase().replaceAll(" ", "-")}-title`}
+      >
+        <div class="feature-section-heading">
+          <p class="eyebrow">Feature set</p>
+          <h2 id={`${section.title.toLowerCase().replaceAll(" ", "-")}-title`}>{section.title}</h2>
+          <p>{section.intro}</p>
+        </div>
+        <div class="feature-sample-grid">
+          {section.features.map((feature) => (
+            <article class="feature-sample">
+              <h3>{feature.name}</h3>
+              {feature.lang === "bash" || feature.lang === "toml" ? (
+                <Code code={feature.code} lang={feature.lang as any} theme="github-dark" />
+              ) : (
+                <CxCode code={feature.code} />
+              )}
+            </article>
+          ))}
+        </div>
+      </section>
+    ))}
+  </main>
+</BaseLayout>

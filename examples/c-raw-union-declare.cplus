@@ -1,0 +1,11 @@
+declare "c-raw-union.h" {
+    raw union CNumberBits {
+        i: int;
+        f: float;
+    }
+}
+
+fn main() -> int {
+    let value: CNumberBits = CNumberBits { i: 42 };
+    return value.i - 42;
+}

@@ -1,0 +1,24 @@
+struct BadIterator {
+    value: int;
+}
+
+struct BadIterable: Iterable<int, BadIterator> {
+    value: int;
+}
+
+fn BadIterable.iterator(self: BadIterable*) -> BadIterator {
+    let iterator: BadIterator;
+    iterator.value = self.value;
+    return iterator;
+}
+
+fn main() -> int {
+    let values: BadIterable;
+    values.value = 1;
+
+    foreach item in values {
+        item = item;
+    }
+
+    return 0;
+}

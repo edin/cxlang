@@ -1,0 +1,19 @@
+module c.ctype;
+
+declare <ctype.h> {
+    fn isalnum(ch: int) -> int;
+    fn isalpha(ch: int) -> int;
+    fn isblank(ch: int) -> int;
+    fn iscntrl(ch: int) -> int;
+    fn isdigit(ch: int) -> int;
+    fn isgraph(ch: int) -> int;
+    fn islower(ch: int) -> int;
+    fn isprint(ch: int) -> int;
+    fn ispunct(ch: int) -> int;
+    fn isspace(ch: int) -> int;
+    fn isupper(ch: int) -> int;
+    fn isxdigit(ch: int) -> int;
+
+    fn tolower(ch: int) -> int;
+    fn toupper(ch: int) -> int;
+}

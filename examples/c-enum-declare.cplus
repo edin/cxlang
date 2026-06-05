@@ -1,0 +1,25 @@
+declare "c-enum.h" {
+    enum CMode {
+        C_MODE_READ = 1,
+        C_MODE_WRITE = 2,
+    }
+}
+
+fn mode_score(mode: CMode) -> int {
+    switch (mode) {
+        case C_MODE_READ: {
+            return 10;
+        }
+        case C_MODE_WRITE: {
+            return 20;
+        }
+        default: {
+            return 0;
+        }
+    }
+}
+
+fn main() -> int {
+    let mode: CMode = C_MODE_WRITE;
+    return mode_score(mode) - 20;
+}

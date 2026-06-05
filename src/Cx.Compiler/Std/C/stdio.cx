@@ -1,0 +1,66 @@
+module c.stdio;
+
+declare <stdio.h> {
+    type FILE = opaque;
+    type fpos_t = opaque;
+    type size_t = usize;
+
+    macro const EOF: int;
+    macro const BUFSIZ: int;
+    macro const FILENAME_MAX: int;
+    macro const FOPEN_MAX: int;
+    macro const TMP_MAX: int;
+    macro const L_tmpnam: int;
+
+    macro const SEEK_SET: int;
+    macro const SEEK_CUR: int;
+    macro const SEEK_END: int;
+
+    macro const stdin: FILE*;
+    macro const stdout: FILE*;
+    macro const stderr: FILE*;
+
+    fn printf(format: const char*, ...) -> int;
+    fn fprintf(stream: FILE*, format: const char*, ...) -> int;
+    fn sprintf(buffer: char*, format: const char*, ...) -> int;
+    fn snprintf(buffer: char*, count: size_t, format: const char*, ...) -> int;
+
+    fn scanf(format: const char*, ...) -> int;
+    fn fscanf(stream: FILE*, format: const char*, ...) -> int;
+    fn sscanf(buffer: const char*, format: const char*, ...) -> int;
+
+    fn fopen(path: const char*, mode: const char*) -> FILE*;
+    fn freopen(path: const char*, mode: const char*, stream: FILE*) -> FILE*;
+    fn fclose(stream: FILE*) -> int;
+    fn fflush(stream: FILE*) -> int;
+
+    fn fread(buffer: void*, size: size_t, count: size_t, stream: FILE*) -> size_t;
+    fn fwrite(buffer: const void*, size: size_t, count: size_t, stream: FILE*) -> size_t;
+
+    fn fgetc(stream: FILE*) -> int;
+    fn fgets(buffer: char*, count: int, stream: FILE*) -> char*;
+    fn fputc(ch: int, stream: FILE*) -> int;
+    fn fputs(text: const char*, stream: FILE*) -> int;
+    fn getc(stream: FILE*) -> int;
+    fn getchar() -> int;
+    fn putc(ch: int, stream: FILE*) -> int;
+    fn putchar(ch: int) -> int;
+    fn puts(text: const char*) -> int;
+    fn ungetc(ch: int, stream: FILE*) -> int;
+
+    fn fseek(stream: FILE*, offset: long, origin: int) -> int;
+    fn ftell(stream: FILE*) -> long;
+    fn rewind(stream: FILE*) -> void;
+    fn fgetpos(stream: FILE*, pos: fpos_t*) -> int;
+    fn fsetpos(stream: FILE*, pos: const fpos_t*) -> int;
+
+    fn clearerr(stream: FILE*) -> void;
+    fn feof(stream: FILE*) -> int;
+    fn ferror(stream: FILE*) -> int;
+    fn perror(message: const char*) -> void;
+
+    fn remove(path: const char*) -> int;
+    fn rename(old_path: const char*, new_path: const char*) -> int;
+    fn tmpfile() -> FILE*;
+    fn tmpnam(buffer: char*) -> char*;
+}

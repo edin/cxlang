@@ -1,0 +1,11 @@
+from c.stdio import printf as print;
+from c.time import clock, clock_t, CLOCKS_PER_SEC;
+
+fn main() -> int {
+    let start: clock_t = clock();
+    let elapsed: clock_t = clock() - start;
+    print("ticks=%lld elapsed=%lld\n",
+        (long long)CLOCKS_PER_SEC,
+        (long long)elapsed);
+    return 0;
+}

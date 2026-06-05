@@ -1,0 +1,42 @@
+module std.core;
+
+type Stack<T> using Vec<T> {
+    expose static with_capacity -> Self;
+    expose static with_allocator -> Self;
+    expose add as push;
+    expose free;
+    expose is_empty;
+    expose pop;
+
+    fn peek() -> Option<T> {
+        if (self.length == 0) {
+            return Option.none<T>();
+        }
+
+        return Option.some<T>(self.data[self.length - 1]);
+    }
+}
+
+test "stack push peek and pop" {
+    let stack: Stack<int> = Stack<int>.with_capacity((usize)2);
+    expect_true(stack.is_empty());
+    expect_true(stack.push(4));
+    expect_true(stack.push(8));
+    expect_false(stack.is_empty());
+
+    let top: Option<int> = stack.peek();
+    expect_true(top.has_value);
+    expect_eq_int(8, top.value);
+
+    let first: Option<int> = stack.pop();
+    let second: Option<int> = stack.pop();
+    let third: Option<int> = stack.pop();
+    expect_true(first.has_value);
+    expect_true(second.has_value);
+    expect_false(third.has_value);
+    expect_eq_int(8, first.value);
+    expect_eq_int(4, second.value);
+    expect_true(stack.is_empty());
+
+    stack.free();
+}

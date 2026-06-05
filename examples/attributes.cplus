@@ -1,0 +1,58 @@
+import c.stdio;
+
+attribute json_name on field {
+    name: char*;
+}
+
+attribute json_skip on field;
+attribute debug_skip on field;
+
+attribute range on field {
+    min: int;
+    max: int;
+}
+
+@derive(Debug)
+struct Address {
+    city: char*;
+    zip: int;
+}
+
+@derive(Debug)
+struct User {
+    @json_name("id")
+    id: int;
+
+    @json_name("displayName")
+    name: char*;
+
+    @json_skip
+    @debug_skip
+    password_hash: char*;
+
+    @range(min: 0, max: 150)
+    age: int;
+
+    address: Address;
+    friend: User*;
+}
+
+fn main() -> int {
+    let address: Address = Address {
+        city: "Sarajevo",
+        zip: 71000
+    };
+
+    let user: User = User {
+        id: 7,
+        name: "Edin",
+        password_hash: "hidden",
+        age: 35,
+        address: address,
+        friend: null
+    };
+
+    user.debug();
+    printf("\n");
+    return 0;
+}

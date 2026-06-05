@@ -1,0 +1,137 @@
+module std.core;
+
+import c.stdio;
+
+type StringBuilder using ByteBuffer {
+    expose static create -> Self;
+    expose static with_capacity -> Self;
+    expose static with_allocator -> Self;
+    expose free;
+    expose clear;
+    expose is_empty;
+    expose reserve;
+    expose write_u8;
+    expose write_bytes;
+    expose as_slice;
+
+    fn append_char(value: char) -> bool {
+        return self.write_u8((u8)value);
+    }
+
+    fn append_byte(value: u8) -> bool {
+        return self.write_u8(value);
+    }
+
+    fn append_view(value: StringView) -> bool {
+        return self.write_bytes((u8*)value.data, value.length);
+    }
+
+    fn append_cstr(value: const char*) -> bool {
+        return self.append_view(StringView.from_cstr(value));
+    }
+
+    fn append_bool(value: bool) -> bool {
+        return self.append_cstr(value ? "true" : "false");
+    }
+
+    fn append_int(value: int) -> bool {
+        let buffer: char[32] = { 0 };
+        let written: int = snprintf(&buffer[0], (usize)32, "%d", value);
+        if (written < 0) {
+            return false;
+        }
+
+        return self.append_cstr(&buffer[0]);
+    }
+
+    fn append_u64(value: u64) -> bool {
+        let buffer: char[32] = { 0 };
+        let written: int = snprintf(&buffer[0], (usize)32, "%llu", value);
+        if (written < 0) {
+            return false;
+        }
+
+        return self.append_cstr(&buffer[0]);
+    }
+
+    fn append_double(value: double) -> bool {
+        let buffer: char[64] = { 0 };
+        let written: int = snprintf(&buffer[0], (usize)64, "%.17g", value);
+        if (written < 0) {
+            return false;
+        }
+
+        return self.append_cstr(&buffer[0]);
+    }
+
+    fn append_newline() -> bool {
+        return self.append_char((char)10);
+    }
+
+    fn append_line(value: StringView) -> bool {
+        if (!self.append_view(value)) {
+            return false;
+        }
+
+        return self.append_newline();
+    }
+
+    fn append_cstr_line(value: const char*) -> bool {
+        return self.append_line(StringView.from_cstr(value));
+    }
+
+    fn as_view() -> StringView {
+        return StringView.from_parts((const char*)self.data, self.length);
+    }
+
+    fn null_terminate() -> bool {
+        if (self.length > 0 && self.data[self.length - 1] == (u8)0) {
+            return true;
+        }
+
+        return self.write_u8((u8)0);
+    }
+}
+
+test "string builder appends text and values" {
+    let builder: StringBuilder = StringBuilder.with_capacity((usize)8);
+    expect_true(builder.append_cstr("count="));
+    expect_true(builder.append_int(42));
+    expect_true(builder.append_cstr(" ok="));
+    expect_true(builder.append_bool(true));
+    expect_true(builder.append_cstr(" total="));
+    expect_true(builder.append_u64((u64)9001));
+    expect_true(builder.append_cstr(" pi="));
+    expect_true(builder.append_double(3.5));
+
+    let view: StringView = builder.as_view();
+    expect_true(view.starts_with_cstr("count=42 ok=true total=9001 pi=3.5"));
+
+    builder.free();
+}
+
+test "string builder appends views lines and bytes" {
+    let builder: StringBuilder = StringBuilder.create();
+    let alpha: StringView = StringView.from_cstr("alpha");
+    expect_true(builder.append_line(alpha));
+    expect_true(builder.append_cstr_line("beta"));
+    expect_true(builder.append_byte((u8)33));
+
+    let view: StringView = builder.as_view();
+    expect_eq_string_view(StringView.from_cstr("alpha\nbeta\n!"), view);
+
+    builder.free();
+}
+
+test "string builder null terminate" {
+    let builder: StringBuilder = StringBuilder.create();
+    expect_true(builder.append_cstr("hello"));
+    expect_true(builder.null_terminate());
+    expect_eq_int(0, (int)builder.data[builder.length - 1]);
+
+    let length_after_first: usize = builder.length;
+    expect_true(builder.null_terminate());
+    expect_eq_usize(length_after_first, builder.length);
+
+    builder.free();
+}

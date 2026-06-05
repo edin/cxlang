@@ -1,0 +1,16 @@
+import c.stdio;
+
+fn main() -> int {
+    let values: Vec<int> = Vec<int>.with_capacity(4);
+
+    values.add<int>(10);
+    values.add<int>(20);
+    values.add<int>(30);
+
+    foreach index, item in values {
+        printf("%llu: %d\n", index, item);
+    }
+
+    values.free<int>();
+    return 0;
+}

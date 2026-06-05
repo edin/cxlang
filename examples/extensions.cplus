@@ -1,0 +1,37 @@
+struct Counter {
+    value: int;
+
+    static fn create(value: int) -> Counter {
+        return Counter { value: value };
+    }
+}
+
+extension Counter {
+    fn add(amount: int) -> void {
+        self.value = self.value + amount;
+    }
+}
+
+extension Vec<T> {
+    fn sum_ints() -> int {
+        let total = 0;
+        for (let i = 0; i < self.length; i++) {
+            total = total + self.data[i];
+        }
+
+        return total;
+    }
+}
+
+fn main() -> int {
+    let counter: Counter = Counter.create(10);
+    counter.add(5);
+
+    let values: Vec<int> = Vec<int>.with_capacity(2);
+    values.add(20);
+    values.add(22);
+
+    let total: int = counter.value + values.sum_ints();
+    values.free();
+    return total - 57;
+}

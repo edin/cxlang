@@ -1,0 +1,27 @@
+fn main() -> int {
+    let values: Vec<int> = Vec<int>.with_capacity(2);
+
+    if (!values.push<int>(10)) {
+        return 1;
+    }
+
+    if (!values.push<int>(20)) {
+        values.free<int>();
+        return 2;
+    }
+
+    if (!values.add<int>(30)) {
+        values.free<int>();
+        return 3;
+    }
+
+    if (!values.remove_at<int>(1)) {
+        values.free<int>();
+        return 4;
+    }
+
+    let result: int = values.data[0] + values.data[1] - 40;
+    values.clear<int>();
+    values.free<int>();
+    return result + values.length;
+}

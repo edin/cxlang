@@ -1,0 +1,35 @@
+import c.stdio;
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+struct Color {
+    r: double;
+    g: double;
+    b: double;
+}
+
+struct Pixel {
+    position: Point;
+    color: Color;
+}
+
+const origin: Point = Point { x: 0, y: 0 };
+
+fn main() -> int {
+    let pixel: Pixel = Pixel {
+        position: Point { x: 12, y: 34 },
+        color: Color { r: 0.25, g: 0.5, b: 1.0 }
+    };
+
+    printf("origin=(%d,%d) pixel=(%d,%d) blue=%d\n",
+        origin.x,
+        origin.y,
+        pixel.position.x,
+        pixel.position.y,
+        (int)(pixel.color.b * 255.0));
+
+    return 0;
+}

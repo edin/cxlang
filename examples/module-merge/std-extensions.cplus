@@ -1,0 +1,5 @@
+module std.core;
+
+fn Vec.debug_length(self: Vec<int>*) -> int {
+    return self.length;
+}

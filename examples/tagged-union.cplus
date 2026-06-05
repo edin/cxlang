@@ -1,0 +1,35 @@
+struct Point {
+    x: int;
+    y: int;
+}
+
+union Value {
+    Number: int;
+    Position: Point;
+}
+
+fn number(value: int) -> Value {
+    let result: Value = value;
+    return result;
+}
+
+fn position(x: int, y: int) -> Value {
+    let result: Value = Value.Position(x, y);
+    return result;
+}
+
+fn score(value: Value*) -> int {
+    match value {
+        Number: n => return n;
+        Position: p => return p.x + p.y;
+        _ => return 0;
+    }
+}
+
+fn main() -> int {
+    let point: Point = Point(2, 3);
+    let value: Value = point;
+    value = Value.Position(100, 200);
+    value = 100;
+    return score(&value) - 100;
+}
