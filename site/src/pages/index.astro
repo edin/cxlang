@@ -35,49 +35,21 @@ const featureGroups = [
 
 const examples = [
   {
-    name: "Point Distance",
-    code: `module app.main;
-
-import std.core;
-import c.stdio as io;
-from c.math import sqrt;
-
-struct Point {
-    x: double;
-    y: double;
-}
-
-extension Point {
-    fn distance(other: Point) -> double {
-        let dx = self.x - other.x;
-        let dy = self.y - other.y;
-        return sqrt(dx * dx + dy * dy);
-    }
-}
+    name: "Vec and Foreach",
+    code: `import c.stdio;
 
 fn main() -> int {
-    let points = Vec<Point>.create();
-    points.add(Point(0, 0));
-    points.add(Point(3, 4));
+    let values = Vec<int>.create();
+    values.add(10);
+    values.add(20);
+    values.add(30);
 
-    foreach index, point in points {
-        let zero = Point(0, 0);
-        let d = point.distance(zero);
-        io.printf(
-            "point %d = %.2f\\n",
-            index,
-            d
-        );
+    foreach value in values {
+        printf("Value %d\\n", value);
     }
 
-    points.free();
+    values.free();
     return 0;
-}
-
-test "point distance" {
-    let a = Point(0, 0);
-    let b = Point(3, 4);
-    expect(a.distance(b) == 5);
 }`
   },
   {
@@ -341,7 +313,7 @@ fn main() -> int {
       </div>
       <div class="example-grid">
         {examples.map((example) => (
-          <article class={`example-card${example.name === "Point Distance" ? " featured-example" : ""}`}>
+          <article class="example-card">
             <h3>{example.name}</h3>
             <CxCode code={example.code} />
           </article>

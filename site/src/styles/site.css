@@ -426,10 +426,6 @@ code {
   overflow: hidden;
 }
 
-.featured-example {
-  grid-column: span 2;
-}
-
 .example-card h3 {
   padding: 18px 20px 0;
 }
@@ -703,10 +699,6 @@ code {
   .status-grid-section,
   .stdlib-reference {
     grid-template-columns: 1fr;
-  }
-
-  .featured-example {
-    grid-column: auto;
   }
 
   .closing {
