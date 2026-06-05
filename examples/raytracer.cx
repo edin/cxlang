@@ -450,7 +450,7 @@ fn main() -> int {
     let time_ms: int = (int)((((double)time) / CLOCKS_PER_SEC) * 1000);
 
     printf("Completed in %d ms\n", time_ms);
-    bitmap.save("cplus-raytracer.bmp");
+    bitmap.save("cx-raytracer.bmp");
 
     scene.free();
     bitmap.free();

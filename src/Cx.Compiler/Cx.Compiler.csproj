@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -11,10 +11,6 @@
     <EmbeddedResource Include="Std\C\*.cx" />
     <EmbeddedResource Include="Std\Core\*.cx" />
     <EmbeddedResource Include="Std\Router\*.cx" />
-    <EmbeddedResource Include="Std\Bitmap\*.cplus" />
-    <EmbeddedResource Include="Std\C\*.cplus" />
-    <EmbeddedResource Include="Std\Core\*.cplus" />
-    <EmbeddedResource Include="Std\Router\*.cplus" />
   </ItemGroup>
 
 </Project>

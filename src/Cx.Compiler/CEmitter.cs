@@ -522,10 +522,10 @@ public sealed class CEmitter
             return new CRawStatement(IndentLine($"/* unable to lower foreach {foreachStatement.ItemName} in {iterableExpression} */", rawIndentLevel));
         }
 
-        var indexName = foreachStatement.IndexBinding?.Name ?? $"__cplus_i{rawIndentLevel}";
+        var indexName = foreachStatement.IndexBinding?.Name ?? $"__cx_i{rawIndentLevel}";
         var loopIndexName = foreachStatement.IndexBinding is null
             ? indexName
-            : $"__cplus_i{rawIndentLevel}";
+            : $"__cx_i{rawIndentLevel}";
         var itemType = GetForeachValueType(foreachStatement, iterable.ElementType);
         var itemStorageType = GetForeachValueStorageType(foreachStatement, iterable.ElementType);
         var bodyLowerer = nameLowerer.WithImplicitReferenceLocal(
@@ -576,11 +576,11 @@ public sealed class CEmitter
         ImportedNameLowerer nameLowerer,
         int rawIndentLevel)
     {
-        var iteratorName = $"__cplus_it{rawIndentLevel}";
-        var indexName = foreachStatement.IndexBinding?.Name ?? $"__cplus_i{rawIndentLevel}";
+        var iteratorName = $"__cx_it{rawIndentLevel}";
+        var indexName = foreachStatement.IndexBinding?.Name ?? $"__cx_i{rawIndentLevel}";
         var loopIndexName = foreachStatement.IndexBinding is null
             ? indexName
-            : $"__cplus_i{rawIndentLevel}";
+            : $"__cx_i{rawIndentLevel}";
         var indexType = GetForeachIndexType(foreachStatement);
         var iteratorLowerer = nameLowerer.WithLocal(iteratorName, iteratorIterable.IteratorType);
         var itemType = GetForeachValueType(foreachStatement, iteratorIterable.ValueType);
@@ -663,10 +663,10 @@ public sealed class CEmitter
         var itemType = GetForeachValueType(foreachStatement, InferScalarRangeType(rangeExpression, nameLowerer));
         var itemName = foreachStatement.ItemName;
         var bodyLowerer = nameLowerer.WithLocal(itemName, itemType);
-        var indexName = foreachStatement.IndexBinding?.Name ?? $"__cplus_i{rawIndentLevel}";
+        var indexName = foreachStatement.IndexBinding?.Name ?? $"__cx_i{rawIndentLevel}";
         var loopIndexName = foreachStatement.IndexBinding is null
             ? indexName
-            : $"__cplus_i{rawIndentLevel}";
+            : $"__cx_i{rawIndentLevel}";
         if (foreachStatement.IndexBinding is { } indexBinding)
         {
             bodyLowerer = bodyLowerer.WithLocal(indexBinding.Name, GetForeachIndexType(foreachStatement));
@@ -2876,10 +2876,10 @@ public sealed class CEmitter
             return;
         }
 
-        var indexName = foreachStatement.IndexBinding?.Name ?? $"__cplus_i{indentLevel}";
+        var indexName = foreachStatement.IndexBinding?.Name ?? $"__cx_i{indentLevel}";
         var loopIndexName = foreachStatement.IndexBinding is null
             ? indexName
-            : $"__cplus_i{indentLevel}";
+            : $"__cx_i{indentLevel}";
         var indexType = GetForeachIndexType(foreachStatement);
         var itemType = GetForeachValueType(foreachStatement, iterable.ElementType);
         var itemStorageType = GetForeachValueStorageType(foreachStatement, iterable.ElementType);

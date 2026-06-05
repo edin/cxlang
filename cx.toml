@@ -1,6 +1,6 @@
 name = "raytracer"
 kind = "exe"
-sources = ["examples/raytracer.cplus"]
+sources = ["examples/raytracer.cx"]
 c_output = "build/c/raytracer.c"
 output = "build/bin/raytracer.exe"
 cc = "gcc"

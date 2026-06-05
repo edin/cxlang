@@ -310,7 +310,7 @@ bitmap.free();`
         lang: "toml",
         code: `name = "raytracer"
 kind = "exe"
-sources = ["examples/raytracer.cplus"]
+sources = ["examples/raytracer.cx"]
 output = "build/bin/raytracer.exe"
 c_output = "build/c/raytracer.c"
 cc = "gcc"
@@ -323,7 +323,7 @@ cc_args = ["-O2", "-lm"]`
 cx run
 cx test
 cx test --std
-cx transpile examples/raytracer.cplus`
+cx transpile examples/raytracer.cx`
       },
       {
         name: "Test Blocks",

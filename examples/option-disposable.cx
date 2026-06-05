@@ -1,5 +1,5 @@
 fn main() -> int {
-    let bytes: Option<ByteBuffer> = File.read_all("examples/string-view.cplus");
+    let bytes: Option<ByteBuffer> = File.read_all("examples/string-view.cx");
     if (!bytes.has_value) {
         return 1;
     }

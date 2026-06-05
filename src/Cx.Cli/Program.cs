@@ -72,7 +72,7 @@ internal sealed class TranspileCommand : Command<TranspileCommand.Settings>
     public sealed class Settings : CommandSettings
     {
         [CommandArgument(0, "[input]")]
-        [Description("Input .cx/.cplus file or directory. If omitted, cx.toml is used.")]
+        [Description("Input .cx file or directory. If omitted, cx.toml is used.")]
         public string? InputPath { get; init; }
 
         [CommandOption("-o|--output <path>")]
@@ -120,7 +120,7 @@ internal sealed class BuildCommand : Command<BuildCommand.Settings>
     public sealed class Settings : CommandSettings
     {
         [CommandArgument(0, "[input]")]
-        [Description("Input .cx/.cplus file or directory. If omitted, cx.toml is used.")]
+        [Description("Input .cx file or directory. If omitted, cx.toml is used.")]
         public string? InputPath { get; init; }
 
         [CommandOption("-o|--output <path>")]
@@ -169,7 +169,7 @@ internal sealed class RunCommand : Command<RunCommand.Settings>
     public sealed class Settings : CommandSettings
     {
         [CommandArgument(0, "[input]")]
-        [Description("Input .cx/.cplus file or directory. If omitted, cx.toml is used.")]
+        [Description("Input .cx file or directory. If omitted, cx.toml is used.")]
         public string? InputPath { get; init; }
 
         [CommandOption("--cc <compiler>")]
@@ -222,7 +222,7 @@ internal sealed class CheckCommand : Command<CheckCommand.Settings>
     public sealed class Settings : CommandSettings
     {
         [CommandArgument(0, "[input]")]
-        [Description("Input .cx/.cplus file or directory. If omitted, cx.toml is used.")]
+        [Description("Input .cx file or directory. If omitted, cx.toml is used.")]
         public string? InputPath { get; init; }
 
         [CommandOption("--config <path>")]
@@ -286,7 +286,7 @@ internal sealed class TestCommand : Command<TestCommand.Settings>
     public sealed class Settings : CommandSettings
     {
         [CommandArgument(0, "[input]")]
-        [Description("Input .cx/.cplus file or directory. If omitted, cx.toml sources plus tests/ are used.")]
+        [Description("Input .cx file or directory. If omitted, cx.toml sources plus tests/ are used.")]
         public string? InputPath { get; init; }
 
         [CommandOption("--cc <compiler>")]
@@ -461,7 +461,7 @@ internal static class CliServices
         var sources = ResolveSourceFiles(sourceEntries, baseDirectory);
         if (sources.Count == 0)
         {
-            return ResolvedBuildPlanResult.Failed("No .cx or .cplus source files were found.");
+            return ResolvedBuildPlanResult.Failed("No .cx source files were found.");
         }
 
         var name = project?.Name
@@ -516,7 +516,7 @@ internal static class CliServices
         var sources = ResolveSourceFiles(sourceEntries, baseDirectory);
         if (sources.Count == 0)
         {
-            return ResolvedBuildPlanResult.Failed("No .cx or .cplus source files were found.");
+            return ResolvedBuildPlanResult.Failed("No .cx source files were found.");
         }
 
         var name = project?.Name

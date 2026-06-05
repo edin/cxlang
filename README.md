@@ -86,9 +86,9 @@ cx test
 Run examples from this repository:
 
 ```powershell
-dotnet run --project src/Cx.Cli -- run examples/allocator-collections.cplus
-dotnet run --project src/Cx.Cli -- run examples/tagged-union.cplus
-dotnet run --project src/Cx.Cli -- run examples/interfaces.cplus
+dotnet run --project src/Cx.Cli -- run examples/allocator-collections.cx
+dotnet run --project src/Cx.Cli -- run examples/tagged-union.cx
+dotnet run --project src/Cx.Cli -- run examples/interfaces.cx
 ```
 
 Run the configured raytracer sample from `cx.toml`:
@@ -110,7 +110,7 @@ The CLI reads `cx.toml` when no input path is provided:
 ```toml
 name = "raytracer"
 kind = "exe"
-sources = ["examples/raytracer.cplus"]
+sources = ["examples/raytracer.cx"]
 output = "build/bin/raytracer.exe"
 c_output = "build/c/raytracer.c"
 cc = "gcc"

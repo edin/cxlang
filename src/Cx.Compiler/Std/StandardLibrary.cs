@@ -13,7 +13,7 @@ internal static class StandardLibrary
         var resourceNames = assembly
             .GetManifestResourceNames()
             .Where(name => name.StartsWith(ResourcePrefix, StringComparison.Ordinal)
-                && (name.EndsWith(".cx", StringComparison.Ordinal) || name.EndsWith(".cplus", StringComparison.Ordinal)))
+                && name.EndsWith(".cx", StringComparison.Ordinal))
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
 
