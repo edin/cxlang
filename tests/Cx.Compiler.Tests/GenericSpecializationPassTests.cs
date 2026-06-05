@@ -71,9 +71,14 @@ public sealed class GenericSpecializationPassTests
 
         var box = Assert.Single(lowered.Structs, structNode => structNode.Name == "Box_int");
         var field = Assert.Single(box.Fields);
+        var main = lowered.Functions.Single(function => function.Name == "main");
+        var let = Assert.IsType<LetStatement>(main.Body[0]);
+        var initializer = Assert.IsType<InitializerExpressionNode>(let.Initializer);
 
         Assert.Equal("value", field.Name);
         Assert.Equal("int", field.Type);
+        Assert.Equal("Box_int", let.Type);
+        Assert.Equal("Box_int", initializer.TypeName);
         Assert.DoesNotContain(lowered.Structs, structNode => structNode.Name == "Unused_int");
     }
 }

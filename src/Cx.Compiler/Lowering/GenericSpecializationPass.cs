@@ -41,18 +41,416 @@ internal static class GenericSpecializationPass
         }
 
         var concreteStructs = SpecializeStructs(program, specializations.Values);
+        var concreteStructNames = concreteStructs
+            .Select(structNode => structNode.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        var loweredProgram = concreteStructNames.Count == 0
+            ? program
+            : RewriteGenericStructTypeReferences(program, concreteStructNames);
+        var loweredSpecializations = concreteStructNames.Count == 0
+            ? specializations
+            : specializations.ToDictionary(
+                pair => pair.Key,
+                pair => RewriteFunctionGenericStructTypeReferences(pair.Value, concreteStructNames),
+                StringComparer.Ordinal);
 
-        RetargetResolvedGenericCalls(program, specializations);
+        RetargetResolvedGenericCalls(loweredProgram, loweredSpecializations);
+        RetargetResolvedGenericCalls(loweredSpecializations.Values, loweredSpecializations);
         if (specializations.Count == 0 && concreteStructs.Count == 0)
         {
-            return program;
+            return loweredProgram;
         }
 
-        return program with
+        return loweredProgram with
         {
-            Structs = program.Structs.Concat(concreteStructs).ToList(),
-            Functions = program.Functions.Concat(specializations.Values).ToList(),
+            Structs = loweredProgram.Structs.Concat(concreteStructs).ToList(),
+            Functions = loweredProgram.Functions.Concat(loweredSpecializations.Values).ToList(),
         };
+    }
+
+    private static ProgramNode RewriteGenericStructTypeReferences(
+        ProgramNode program,
+        IReadOnlySet<string> concreteStructNames) =>
+        program with
+        {
+            ExternFunctions = program.ExternFunctions
+                .Select(function => function with
+                {
+                    ReturnType = RewriteConcreteGenericStructTypes(function.ReturnType, concreteStructNames),
+                    Parameters = RewriteParameters(function.Parameters, concreteStructNames),
+                })
+                .ToList(),
+            TypeAliases = program.TypeAliases
+                .Select(alias => alias with { TargetType = RewriteConcreteGenericStructTypes(alias.TargetType, concreteStructNames) })
+                .ToList(),
+            Structs = program.Structs
+                .Select(structNode => RewriteStructGenericStructTypeReferences(structNode, concreteStructNames))
+                .ToList(),
+            TypeAdapters = program.TypeAdapters
+                .Select(adapter => adapter with
+                {
+                    BaseType = RewriteConcreteGenericStructTypes(adapter.BaseType, concreteStructNames),
+                    ExposedMethods = adapter.ExposedMethods
+                        .Select(method => method with
+                        {
+                            ReturnType = method.ReturnType is null
+                                ? null
+                                : RewriteConcreteGenericStructTypes(method.ReturnType, concreteStructNames),
+                        })
+                        .ToList(),
+                    Methods = adapter.Methods
+                        .Select(method => RewriteFunctionGenericStructTypeReferences(method, concreteStructNames))
+                        .ToList(),
+                })
+                .ToList(),
+            Extensions = program.Extensions
+                .Select(extension => extension with
+                {
+                    TargetType = RewriteConcreteGenericStructTypes(extension.TargetType, concreteStructNames),
+                    Methods = extension.Methods
+                        .Select(method => RewriteFunctionGenericStructTypeReferences(method, concreteStructNames))
+                        .ToList(),
+                })
+                .ToList(),
+            TaggedUnions = program.TaggedUnions
+                .Select(taggedUnion => taggedUnion with
+                {
+                    Variants = taggedUnion.Variants
+                        .Select(variant => variant with
+                        {
+                            Type = RewriteConcreteGenericStructTypes(variant.Type, concreteStructNames),
+                        })
+                        .ToList(),
+                    Methods = taggedUnion.Methods
+                        .Select(method => RewriteFunctionGenericStructTypeReferences(method, concreteStructNames))
+                        .ToList(),
+                })
+                .ToList(),
+            GlobalVariables = program.GlobalVariables
+                .Select(global => global with
+                {
+                    Type = RewriteConcreteGenericStructTypes(global.Type, concreteStructNames),
+                    Initializer = global.Initializer is null
+                        ? null
+                        : RewriteExpressionGenericStructTypeReferences(global.Initializer, concreteStructNames),
+                })
+                .ToList(),
+            Functions = program.Functions
+                .Select(function => RewriteFunctionGenericStructTypeReferences(function, concreteStructNames))
+                .ToList(),
+            Tests = program.Tests
+                .Select(test => test with
+                {
+                    Body = test.Body
+                        .Select(statement => RewriteStatementGenericStructTypeReferences(statement, concreteStructNames))
+                        .ToList(),
+                })
+                .ToList(),
+        };
+
+    private static StructNode RewriteStructGenericStructTypeReferences(
+        StructNode structNode,
+        IReadOnlySet<string> concreteStructNames) =>
+        structNode with
+        {
+            Requirements = RewriteStructRequirements(structNode.Requirements, concreteStructNames),
+            Fields = structNode.Fields
+                .Select(field => field with { Type = RewriteConcreteGenericStructTypes(field.Type, concreteStructNames) })
+                .ToList(),
+            Methods = structNode.Methods
+                .Select(method => RewriteFunctionGenericStructTypeReferences(method, concreteStructNames))
+                .ToList(),
+        };
+
+    private static FunctionNode RewriteFunctionGenericStructTypeReferences(
+        FunctionNode function,
+        IReadOnlySet<string> concreteStructNames)
+    {
+        var rewritten = function with
+        {
+            OwnerType = function.OwnerType is null
+                ? null
+                : RewriteConcreteGenericStructTypes(function.OwnerType, concreteStructNames),
+            GenericConstraints = RewriteGenericConstraints(function.GenericConstraints, concreteStructNames),
+            ReturnType = RewriteConcreteGenericStructTypes(function.ReturnType, concreteStructNames),
+            Parameters = RewriteParameters(function.Parameters, concreteStructNames),
+            Body = function.Body
+                .Select(statement => RewriteStatementGenericStructTypeReferences(statement, concreteStructNames))
+                .ToList(),
+        };
+        return CopySemantic(function, rewritten);
+    }
+
+    private static IReadOnlyList<ParameterNode> RewriteParameters(
+        IReadOnlyList<ParameterNode> parameters,
+        IReadOnlySet<string> concreteStructNames) =>
+        parameters
+            .Select(parameter => parameter.IsVariadic
+                ? parameter
+                : parameter with { Type = RewriteConcreteGenericStructTypes(parameter.Type, concreteStructNames) })
+            .ToList();
+
+    private static IReadOnlyList<GenericConstraintNode> RewriteGenericConstraints(
+        IReadOnlyList<GenericConstraintNode> constraints,
+        IReadOnlySet<string> concreteStructNames) =>
+        constraints
+            .Select(constraint => constraint with
+            {
+                Requirements = RewriteStructRequirements(constraint.Requirements, concreteStructNames),
+            })
+            .ToList();
+
+    private static IReadOnlyList<StructRequirementNode> RewriteStructRequirements(
+        IReadOnlyList<StructRequirementNode> requirements,
+        IReadOnlySet<string> concreteStructNames) =>
+        requirements
+            .Select(requirement => requirement with
+            {
+                TypeArguments = requirement.TypeArguments
+                    .Select(argument => RewriteConcreteGenericStructTypes(argument, concreteStructNames))
+                    .ToList(),
+            })
+            .ToList();
+
+    private static StatementNode RewriteStatementGenericStructTypeReferences(
+        StatementNode statement,
+        IReadOnlySet<string> concreteStructNames)
+    {
+        var rewritten = statement switch
+        {
+            LetStatement let => let with
+            {
+                Type = RewriteConcreteGenericStructTypes(let.Type, concreteStructNames),
+                Initializer = RewriteOptionalExpressionGenericStructTypeReferences(let.Initializer, concreteStructNames),
+            },
+            ReturnStatement ret => ret with
+            {
+                Expression = RewriteExpressionGenericStructTypeReferences(ret.Expression, concreteStructNames),
+            },
+            CStatement c => c with
+            {
+                Expression = RewriteExpressionGenericStructTypeReferences(c.Expression, concreteStructNames),
+            },
+            IfStatement ifStatement => ifStatement with
+            {
+                Condition = RewriteExpressionGenericStructTypeReferences(ifStatement.Condition, concreteStructNames),
+                ThenBody = ifStatement.ThenBody
+                    .Select(nested => RewriteStatementGenericStructTypeReferences(nested, concreteStructNames))
+                    .ToList(),
+                ElseBranch = ifStatement.ElseBranch is null
+                    ? null
+                    : RewriteStatementGenericStructTypeReferences(ifStatement.ElseBranch, concreteStructNames),
+            },
+            ElseBlockStatement elseBlock => elseBlock with
+            {
+                Body = elseBlock.Body
+                    .Select(nested => RewriteStatementGenericStructTypeReferences(nested, concreteStructNames))
+                    .ToList(),
+            },
+            WhileStatement whileStatement => whileStatement with
+            {
+                Condition = RewriteExpressionGenericStructTypeReferences(whileStatement.Condition, concreteStructNames),
+                Body = whileStatement.Body
+                    .Select(nested => RewriteStatementGenericStructTypeReferences(nested, concreteStructNames))
+                    .ToList(),
+            },
+            ForStatement forStatement => forStatement with
+            {
+                Initializer = RewriteForInitializerGenericStructTypeReferences(forStatement.Initializer, concreteStructNames),
+                Condition = RewriteExpressionGenericStructTypeReferences(forStatement.Condition, concreteStructNames),
+                Increment = RewriteExpressionGenericStructTypeReferences(forStatement.Increment, concreteStructNames),
+                Body = forStatement.Body
+                    .Select(nested => RewriteStatementGenericStructTypeReferences(nested, concreteStructNames))
+                    .ToList(),
+            },
+            ForeachStatement foreachStatement => foreachStatement with
+            {
+                IndexBinding = foreachStatement.IndexBinding is null
+                    ? null
+                    : RewriteForeachBinding(foreachStatement.IndexBinding, concreteStructNames),
+                KeyBinding = foreachStatement.KeyBinding is null
+                    ? null
+                    : RewriteForeachBinding(foreachStatement.KeyBinding, concreteStructNames),
+                ValueBinding = RewriteForeachBinding(foreachStatement.ValueBinding, concreteStructNames),
+                IterableExpression = RewriteExpressionGenericStructTypeReferences(foreachStatement.IterableExpression, concreteStructNames),
+                Body = foreachStatement.Body
+                    .Select(nested => RewriteStatementGenericStructTypeReferences(nested, concreteStructNames))
+                    .ToList(),
+            },
+            SwitchStatement switchStatement => switchStatement with
+            {
+                Expression = RewriteExpressionGenericStructTypeReferences(switchStatement.Expression, concreteStructNames),
+                Cases = switchStatement.Cases
+                    .Select(switchCase => switchCase with
+                    {
+                        Pattern = RewriteExpressionGenericStructTypeReferences(switchCase.Pattern, concreteStructNames),
+                        Body = switchCase.Body
+                            .Select(nested => RewriteStatementGenericStructTypeReferences(nested, concreteStructNames))
+                            .ToList(),
+                    })
+                    .ToList(),
+                DefaultBody = switchStatement.DefaultBody
+                    .Select(nested => RewriteStatementGenericStructTypeReferences(nested, concreteStructNames))
+                    .ToList(),
+            },
+            MatchStatement matchStatement => matchStatement with
+            {
+                Expression = RewriteExpressionGenericStructTypeReferences(matchStatement.Expression, concreteStructNames),
+                Arms = matchStatement.Arms
+                    .Select(arm => arm with
+                    {
+                        Body = arm.Body
+                            .Select(nested => RewriteStatementGenericStructTypeReferences(nested, concreteStructNames))
+                            .ToList(),
+                    })
+                    .ToList(),
+            },
+            _ => statement,
+        };
+
+        return CopySemantic(statement, rewritten);
+    }
+
+    private static ForInitializerNode RewriteForInitializerGenericStructTypeReferences(
+        ForInitializerNode initializer,
+        IReadOnlySet<string> concreteStructNames)
+    {
+        var rewritten = initializer switch
+        {
+            ForDeclarationInitializerNode declaration => declaration with
+            {
+                Type = RewriteConcreteGenericStructTypes(declaration.Type, concreteStructNames),
+                Initializer = RewriteOptionalExpressionGenericStructTypeReferences(declaration.Initializer, concreteStructNames),
+            },
+            ForExpressionInitializerNode expression => expression with
+            {
+                Expression = RewriteExpressionGenericStructTypeReferences(expression.Expression, concreteStructNames),
+            },
+            _ => initializer,
+        };
+        return CopySemantic(initializer, rewritten);
+    }
+
+    private static ForeachBinding RewriteForeachBinding(
+        ForeachBinding binding,
+        IReadOnlySet<string> concreteStructNames) =>
+        CopySemantic(binding, binding with
+        {
+            Type = RewriteConcreteGenericStructTypes(binding.Type, concreteStructNames),
+        });
+
+    private static ExpressionNode? RewriteOptionalExpressionGenericStructTypeReferences(
+        ExpressionNode? expression,
+        IReadOnlySet<string> concreteStructNames) =>
+        expression is null ? null : RewriteExpressionGenericStructTypeReferences(expression, concreteStructNames);
+
+    private static ExpressionNode RewriteExpressionGenericStructTypeReferences(
+        ExpressionNode expression,
+        IReadOnlySet<string> concreteStructNames)
+    {
+        var rewritten = expression switch
+        {
+            ParenthesizedExpressionNode parenthesized => parenthesized with
+            {
+                Expression = RewriteExpressionGenericStructTypeReferences(parenthesized.Expression, concreteStructNames),
+            },
+            CastExpressionNode cast => cast with
+            {
+                TargetType = RewriteConcreteGenericStructTypes(cast.TargetType, concreteStructNames),
+                Expression = RewriteExpressionGenericStructTypeReferences(cast.Expression, concreteStructNames),
+            },
+            UnaryExpressionNode unary => unary with
+            {
+                Operand = RewriteExpressionGenericStructTypeReferences(unary.Operand, concreteStructNames),
+            },
+            PostfixExpressionNode postfix => postfix with
+            {
+                Operand = RewriteExpressionGenericStructTypeReferences(postfix.Operand, concreteStructNames),
+            },
+            SizeOfExpressionNode sizeOf => sizeOf with
+            {
+                TypeOperand = sizeOf.TypeOperand is null
+                    ? null
+                    : RewriteConcreteGenericStructTypes(sizeOf.TypeOperand, concreteStructNames),
+                ExpressionOperand = RewriteOptionalExpressionGenericStructTypeReferences(sizeOf.ExpressionOperand, concreteStructNames),
+            },
+            BinaryExpressionNode binary => binary with
+            {
+                Left = RewriteExpressionGenericStructTypeReferences(binary.Left, concreteStructNames),
+                Right = RewriteExpressionGenericStructTypeReferences(binary.Right, concreteStructNames),
+            },
+            ScalarRangeExpressionNode range => range with
+            {
+                Start = RewriteExpressionGenericStructTypeReferences(range.Start, concreteStructNames),
+                End = RewriteExpressionGenericStructTypeReferences(range.End, concreteStructNames),
+            },
+            ConditionalExpressionNode conditional => conditional with
+            {
+                Condition = RewriteExpressionGenericStructTypeReferences(conditional.Condition, concreteStructNames),
+                WhenTrue = RewriteExpressionGenericStructTypeReferences(conditional.WhenTrue, concreteStructNames),
+                WhenFalse = RewriteExpressionGenericStructTypeReferences(conditional.WhenFalse, concreteStructNames),
+            },
+            InitializerExpressionNode initializer => initializer with
+            {
+                TypeName = initializer.TypeName is null
+                    ? null
+                    : RewriteConcreteGenericStructTypes(initializer.TypeName, concreteStructNames),
+                Fields = initializer.Fields
+                    .Select(field => field with
+                    {
+                        Value = RewriteExpressionGenericStructTypeReferences(field.Value, concreteStructNames),
+                    })
+                    .ToList(),
+                Values = initializer.Values
+                    .Select(value => RewriteExpressionGenericStructTypeReferences(value, concreteStructNames))
+                    .ToList(),
+            },
+            FunctionExpressionNode functionExpression => functionExpression with
+            {
+                Parameters = RewriteParameters(functionExpression.Parameters, concreteStructNames),
+                ReturnType = functionExpression.ReturnType is null
+                    ? null
+                    : RewriteConcreteGenericStructTypes(functionExpression.ReturnType, concreteStructNames),
+                ExpressionBody = RewriteOptionalExpressionGenericStructTypeReferences(functionExpression.ExpressionBody, concreteStructNames),
+                BlockBody = functionExpression.BlockBody?
+                    .Select(statement => RewriteStatementGenericStructTypeReferences(statement, concreteStructNames))
+                    .ToList(),
+            },
+            AssignmentExpressionNode assignment => assignment with
+            {
+                Target = RewriteExpressionGenericStructTypeReferences(assignment.Target, concreteStructNames),
+                Value = RewriteExpressionGenericStructTypeReferences(assignment.Value, concreteStructNames),
+            },
+            CallExpressionNode call => call with
+            {
+                Callee = RewriteExpressionGenericStructTypeReferences(call.Callee, concreteStructNames),
+                Arguments = call.Arguments
+                    .Select(argument => RewriteExpressionGenericStructTypeReferences(argument, concreteStructNames))
+                    .ToList(),
+            },
+            GenericCallExpressionNode call => call with
+            {
+                Callee = RewriteExpressionGenericStructTypeReferences(call.Callee, concreteStructNames),
+                TypeArguments = call.TypeArguments
+                    .Select(argument => RewriteConcreteGenericStructTypes(argument, concreteStructNames))
+                    .ToList(),
+                Arguments = call.Arguments
+                    .Select(argument => RewriteExpressionGenericStructTypeReferences(argument, concreteStructNames))
+                    .ToList(),
+            },
+            MemberExpressionNode member => member with
+            {
+                Target = RewriteExpressionGenericStructTypeReferences(member.Target, concreteStructNames),
+            },
+            IndexExpressionNode index => index with
+            {
+                Target = RewriteExpressionGenericStructTypeReferences(index.Target, concreteStructNames),
+                Index = RewriteExpressionGenericStructTypeReferences(index.Index, concreteStructNames),
+            },
+            _ => expression,
+        };
+
+        return CopySemantic(expression, rewritten);
     }
 
     private static IReadOnlyList<StructNode> SpecializeStructs(
@@ -303,22 +701,45 @@ internal static class GenericSpecializationPass
         ProgramNode program,
         IReadOnlyDictionary<string, FunctionNode> specializations)
     {
-        foreach (var expression in EnumerateExpressions(program))
-        {
-            if (expression.Semantic.ResolvedCall is not { Function.TypeParameters.Count: > 0 } resolved
-                || resolved.TypeArguments.Count != resolved.Function.TypeParameters.Count
-                || !specializations.TryGetValue(Key(resolved.Function, resolved.TypeArguments), out var specialized))
-            {
-                continue;
-            }
+        RetargetResolvedGenericCalls(EnumerateExpressions(program), specializations);
+    }
 
-            EnsureFunctionSymbol(specialized);
-            expression.Semantic.Symbol = specialized.Semantic.Symbol;
-            expression.Semantic.ResolvedCall = new ResolvedCallInfo(
-                specialized,
-                resolved.TypeArguments,
-                resolved.IsInstance);
+    private static void RetargetResolvedGenericCalls(
+        IEnumerable<FunctionNode> functions,
+        IReadOnlyDictionary<string, FunctionNode> specializations)
+    {
+        RetargetResolvedGenericCalls(
+            functions.SelectMany(function => EnumerateExpressions(function.Body)),
+            specializations);
+    }
+
+    private static void RetargetResolvedGenericCalls(
+        IEnumerable<ExpressionNode> expressions,
+        IReadOnlyDictionary<string, FunctionNode> specializations)
+    {
+        foreach (var expression in expressions)
+        {
+            RetargetResolvedGenericCall(expression, specializations);
         }
+    }
+
+    private static void RetargetResolvedGenericCall(
+        ExpressionNode expression,
+        IReadOnlyDictionary<string, FunctionNode> specializations)
+    {
+        if (expression.Semantic.ResolvedCall is not { Function.TypeParameters.Count: > 0 } resolved
+            || resolved.TypeArguments.Count != resolved.Function.TypeParameters.Count
+            || !specializations.TryGetValue(Key(resolved.Function, resolved.TypeArguments), out var specialized))
+        {
+            return;
+        }
+
+        EnsureFunctionSymbol(specialized);
+        expression.Semantic.Symbol = specialized.Semantic.Symbol;
+        expression.Semantic.ResolvedCall = new ResolvedCallInfo(
+            specialized,
+            resolved.TypeArguments,
+            resolved.IsInstance);
     }
 
     private static void EnsureFunctionSymbol(FunctionNode function)
@@ -738,6 +1159,12 @@ internal static class GenericSpecializationPass
                 i++;
             }
 
+            var nameEnd = i;
+            while (i < type.Length && char.IsWhiteSpace(type[i]))
+            {
+                i++;
+            }
+
             if (i >= type.Length || type[i] != '<')
             {
                 continue;
@@ -749,9 +1176,9 @@ internal static class GenericSpecializationPass
                 continue;
             }
 
-            var name = type[nameStart..i];
+            var name = type[nameStart..nameEnd];
             var arguments = SplitGenericArguments(type[(i + 1)..close]);
-            uses.Add(new GenericStructUse(name, arguments));
+            uses.Add(new GenericStructUse(name, arguments, type[nameStart..(close + 1)]));
 
             foreach (var argument in arguments)
             {
@@ -770,16 +1197,33 @@ internal static class GenericSpecializationPass
     private static string LowerTypeName(string type)
     {
         type = type.Trim();
-        foreach (var use in FindGenericStructUses(type).OrderByDescending(use => $"{use.Name}<".Length + string.Join(",", use.Arguments).Length))
+        foreach (var use in FindGenericStructUses(type).OrderByDescending(use => use.SourceText.Length))
         {
-            var source = $"{use.Name}<{string.Join(",", use.Arguments)}>";
-            type = type.Replace(source, LowerGenericTypeName(use.Name, use.Arguments), StringComparison.Ordinal);
+            type = type.Replace(use.SourceText, LowerGenericTypeName(use.Name, use.Arguments), StringComparison.Ordinal);
         }
 
         return SanitizeTypeName(type
             .Replace("const ", "const_", StringComparison.Ordinal)
             .Replace("*", "_ptr", StringComparison.Ordinal)
             .Replace(" ", "_", StringComparison.Ordinal));
+    }
+
+    private static string RewriteConcreteGenericStructTypes(
+        string type,
+        IReadOnlySet<string> concreteStructNames)
+    {
+        foreach (var use in FindGenericStructUses(type).OrderByDescending(use => use.SourceText.Length))
+        {
+            var concreteName = LowerGenericTypeName(use.Name, use.Arguments);
+            if (!concreteStructNames.Contains(concreteName))
+            {
+                continue;
+            }
+
+            type = type.Replace(use.SourceText, concreteName, StringComparison.Ordinal);
+        }
+
+        return type;
     }
 
     private static string SanitizeTypeName(string type) =>
@@ -854,7 +1298,18 @@ internal static class GenericSpecializationPass
     private static string Key(FunctionNode function, IReadOnlyList<string> arguments) =>
         $"{(function.OwnerType is null ? function.Name : $"{function.OwnerType}.{function.Name}")}<{string.Join(",", arguments)}>";
 
-    private sealed record GenericStructUse(string Name, IReadOnlyList<string> Arguments);
+    private static T CopySemantic<T>(SyntaxNode source, T target)
+        where T : SyntaxNode
+    {
+        target.Semantic.Type = source.Semantic.Type;
+        target.Semantic.Symbol = source.Semantic.Symbol;
+        target.Semantic.Origin = source.Semantic.Origin;
+        target.Semantic.ModuleName = source.Semantic.ModuleName;
+        target.Semantic.ResolvedCall = source.Semantic.ResolvedCall;
+        return target;
+    }
+
+    private sealed record GenericStructUse(string Name, IReadOnlyList<string> Arguments, string SourceText);
 
     private sealed record GenericFunctionUse(FunctionNode Function, IReadOnlyList<string> TypeArguments);
 }
