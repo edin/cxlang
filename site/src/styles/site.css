@@ -443,7 +443,7 @@ code {
   margin-bottom: 32px;
 }
 
-.stdlib-list span {
+.stdlib-list a {
   padding: 9px 12px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -451,6 +451,12 @@ code {
   color: #29323a;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 14px;
+  text-decoration: none;
+}
+
+.stdlib-list a:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .core-showcase {
@@ -458,6 +464,33 @@ code {
   grid-template-columns: minmax(0, 0.72fr) minmax(360px, 1.28fr);
   gap: clamp(24px, 4vw, 56px);
   align-items: start;
+}
+
+.stdlib-reference {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 32px;
+}
+
+.stdlib-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.stdlib-card h3 {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  font-size: 18px;
+}
+
+.stdlib-card pre {
+  padding: 18px;
+  background: var(--code);
+  color: #dce7ef;
 }
 
 .closing {
@@ -663,7 +696,8 @@ code {
   .feature-grid,
   .example-grid,
   .feature-sample-grid,
-  .status-grid-section {
+  .status-grid-section,
+  .stdlib-reference {
     grid-template-columns: 1fr;
   }
 

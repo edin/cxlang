@@ -79,18 +79,101 @@ fn score(value: Value*) -> int {
 ];
 
 const stdlib = [
-  "Vec<T>",
-  "StringView",
-  "StringBuilder",
-  "HashMap<K, V>",
-  "HashSet<T>",
-  "Option<T>",
-  "Result<T, E>",
-  "File",
-  "Path",
-  "Bitmap",
-  "Allocator",
-  "JsonWriter"
+  {
+    id: "vec",
+    name: "Vec<T>",
+    code: `let values = Vec<int>.create();
+values.add(10);
+values.add(20);
+values.free();`
+  },
+  {
+    id: "string-view",
+    name: "StringView",
+    code: `let text = StringView.from_cstr(" hi ");
+let trimmed = text.trim();
+let ok = trimmed.equals_cstr("hi");`
+  },
+  {
+    id: "string-builder",
+    name: "StringBuilder",
+    code: `let builder = StringBuilder.create();
+builder.append_cstr("hello");
+builder.append_char(' ');
+builder.append_cstr("cx");
+builder.free();`
+  },
+  {
+    id: "hash-map",
+    name: "HashMap<K, V>",
+    code: `let routes = HashMap<StringView, int>.create();
+routes.put(StringView.from_cstr("/health"), 200);
+let status = routes.get(StringView.from_cstr("/health"));
+routes.free();`
+  },
+  {
+    id: "hash-set",
+    name: "HashSet<T>",
+    code: `let seen = HashSet<int>.create();
+seen.add(10);
+let ok = seen.contains(10);
+seen.free();`
+  },
+  {
+    id: "option",
+    name: "Option<T>",
+    code: `let value = StringView.from_cstr("123").parse_int();
+if (value.has_value) {
+    return value.value;
+}`
+  },
+  {
+    id: "result",
+    name: "Result<T, E>",
+    code: `let file = File.open("data.txt");
+if (file.is_ok) {
+    file.value.free();
+}`
+  },
+  {
+    id: "file",
+    name: "File",
+    code: `let file = File.create("notes.txt");
+file.write_cstr("hello cx");
+file.free();`
+  },
+  {
+    id: "path",
+    name: "Path",
+    code: `let path = StringView.from_cstr("src/main.cx");
+let name = Path.file_name(path);
+let ext = Path.extension(path);`
+  },
+  {
+    id: "bitmap",
+    name: "Bitmap",
+    code: `let bitmap = Bitmap.create(64, 64);
+bitmap.clear(Color32 { r: 16, g: 16, b: 16, a: 255 });
+bitmap.save("image.bmp");
+bitmap.free();`
+  },
+  {
+    id: "allocator",
+    name: "Allocator",
+    code: `let buffer: u8[256];
+let fixed = FixedBufferAllocator.from_buffer(&buffer[0], 256);
+let allocator: Allocator = fixed;`
+  },
+  {
+    id: "json-writer",
+    name: "JsonWriter",
+    code: `let json = JsonWriter.create();
+json.begin_object();
+json.name("ok");
+json.bool_value(true);
+json.end_object();
+json.free();`
+  }
 ];
 
 const cliCommands = `cx new hello-cx
@@ -244,7 +327,7 @@ fn main() -> int {
         <h2 id="stdlib-title">Small core, useful primitives</h2>
       </div>
       <div class="stdlib-list" aria-label="Standard library modules and types">
-        {stdlib.map((item) => <span>{item}</span>)}
+        {stdlib.map((item) => <a href={`#std-${item.id}`}>{item.name}</a>)}
       </div>
       <div class="core-showcase">
         <div>
@@ -256,6 +339,14 @@ fn main() -> int {
           </p>
         </div>
         <CxCode code={allocatorVecExample} />
+      </div>
+      <div class="stdlib-reference" aria-label="Standard library examples">
+        {stdlib.map((item) => (
+          <article class="stdlib-card" id={`std-${item.id}`}>
+            <h3>{item.name}</h3>
+            <CxCode code={item.code} />
+          </article>
+        ))}
       </div>
     </section>
 

@@ -1,37 +1,58 @@
 # CX
 
-CX is a small experiment in tooling around a C-like language that emits C code.
+CX is an experimental C-like language and CLI prototype that transpiles to
+readable C.
 
-The compiler embeds a first standard-library definition file at
-`Cx.Compiler/Std/Core/*.cx`, currently providing core aliases like `i32`,
-`u64`, `usize`, `bool`, plus generic `Indexed<T>`, `KeyValue<K, V>`,
-`Option<T>`, `StringView`, `Slice<T>`, `Vec<T>`, `Stack<T>`, `HashSet<T>`,
-`HashMap<K, V>`, and `Router<TRequest, TResponse>` definitions. The core files
-declare `module std.core`; the exact-match router declares `module std.router`.
-`true`, `false`, and `null` are language literals. Booleans lower to `1` and
-`0`; `null` lowers to `NULL` and automatically emits `<stddef.h>` when used.
+It is not production-ready. The syntax, compiler internals, standard library,
+and tooling are still changing. The project is useful today for experiments,
+small native programs, C interop ideas, and exploring what a friendlier
+C-facing language could feel like.
 
-The first milestone keeps the language intentionally close to C while adding a few
-syntax conveniences that are easy to parse and easy to lower:
+Website: [cxlang.dev](https://cxlang.dev)
 
-```c
-fn add(a: int, b: int) -> int {
-    let total: int = a + b;
-    return total;
+Source: [github.com/edin/cxlang](https://github.com/edin/cxlang)
+
+## What Works
+
+- Transpile CX source to readable C.
+- Build and run native programs through a local C compiler.
+- Functions, structs, methods, extensions, and static methods.
+- Generics, type wrappers, and constrained extensions.
+- Tagged unions with `match`.
+- Interfaces lowered to C-friendly function-pointer tables.
+- Structural requirements and generic `where` clauses.
+- `cx test` with embedded stdlib tests and project test discovery.
+- A small standard library with containers, strings, files, allocators, JSON, and bitmap helpers.
+
+See the full feature catalog: [cxlang.dev/features](https://cxlang.dev/features)
+
+See current project status: [cxlang.dev/status](https://cxlang.dev/status)
+
+## Tiny Example
+
+```cx
+import c.stdio;
+
+fn main() -> int {
+    let values = Vec<int>.create();
+    values.add(10);
+    values.add(20);
+    values.add(30);
+
+    foreach value in values {
+        printf("Value %d\n", value);
+    }
+
+    values.free();
+    return 0;
 }
 ```
 
-emits:
+Generated C is meant to stay ordinary and readable. CX features lower into C
+shapes like functions, structs, enums, tagged records, function pointers, and
+explicit allocator calls.
 
-```c
-int add(int a, int b)
-{
-    int total = a + b;
-    return total;
-}
-```
-
-## Run
+## Install
 
 Install the CLI as `cx` for the current Windows user:
 
@@ -39,212 +60,128 @@ Install the CLI as `cx` for the current Windows user:
 powershell -ExecutionPolicy Bypass -File scripts\install-cx.ps1
 ```
 
-Open a new terminal after install, then use:
+Open a new terminal after install:
 
 ```powershell
 cx --help
+```
+
+You can also run the CLI directly from the repo:
+
+```powershell
+dotnet run --project src/Cx.Cli -- --help
+```
+
+## Quick Start
+
+Create and run a new project:
+
+```powershell
+cx new hello-cx
+cd hello-cx
 cx run
+cx test
 ```
+
+Run examples from this repository:
 
 ```powershell
-dotnet run --project src/Cx.Cli -- transpile examples/hello.cplus
+dotnet run --project src/Cx.Cli -- run examples/allocator-collections.cplus
+dotnet run --project src/Cx.Cli -- run examples/tagged-union.cplus
+dotnet run --project src/Cx.Cli -- run examples/interfaces.cplus
 ```
 
-Equivalent explicit command:
+Run the configured raytracer sample from `cx.toml`:
 
 ```powershell
-dotnet run --project src/Cx.Cli -- transpile examples/hello.cplus -o build/c/hello.c
+dotnet run --project src/Cx.Cli -- run
 ```
 
-The CLI also accepts a directory and compiles all `*.cx` and `*.cplus` files under it:
+Run embedded standard-library tests:
 
 ```powershell
-dotnet run --project src/Cx.Cli -- transpile examples/module-merge -o build/c/module-merge.c
+dotnet run --project src/Cx.Cli -- test --std
 ```
 
-To transpile, compile with `gcc`, and run in one step:
+## Project Config
 
-```powershell
-dotnet run --project src/Cx.Cli -- run examples/vec-functions.cplus
-```
-
-The CLI can also read `cx.toml` from the current directory when the input path
-is omitted:
+The CLI reads `cx.toml` when no input path is provided:
 
 ```toml
 name = "raytracer"
 kind = "exe"
 sources = ["examples/raytracer.cplus"]
-output = "build/bin/raytracer-config.exe"
-c_output = "build/c/raytracer-config.c"
+output = "build/bin/raytracer.exe"
+c_output = "build/c/raytracer.c"
 cc = "gcc"
-cc_args = ["-lm"]
+cc_args = ["-O2"]
 ```
 
-With that config:
+Then:
 
 ```powershell
-dotnet run --project src/Cx.Cli -- transpile
-dotnet run --project src/Cx.Cli -- build
-dotnet run --project src/Cx.Cli -- run
+cx build
+cx run
+cx test
 ```
 
-`cx test` uses the configured sources and also discovers test files under a
-top-level `tests` directory. Build/run commands do not include `tests` unless
-you list it explicitly:
+`cx test` uses configured sources and also discovers test files under a top-level
+`tests` directory. Build/run commands do not include `tests` unless listed
+explicitly.
+
+## Standard Library
+
+Current useful pieces include:
+
+- `Vec<T>`
+- `StringView`
+- `StringBuilder`
+- `HashMap<K, V>`
+- `HashSet<T>`
+- `Option<T>`
+- `Result<T, E>`
+- `File`
+- `Path`
+- `Bitmap`
+- `Allocator`
+- `JsonWriter`
+
+The standard library is early and intentionally small. APIs may change.
+
+## Repository Layout
+
+```text
+src/Cx.Compiler/          compiler library
+src/Cx.Cli/               command-line tool
+src/Cx.Compiler/Std/      embedded CX standard library files
+examples/                 CX example programs
+tests/                    .NET compiler tests
+site/                     Astro website for cxlang.dev
+scripts/install-cx.ps1    local CLI install script
+```
+
+## Development
+
+Build and test:
 
 ```powershell
-dotnet run --project src/Cx.Cli -- test
+dotnet build Cx.sln
+dotnet test Cx.sln
 dotnet run --project src/Cx.Cli -- test --std
 ```
 
-To pass native compiler/linker flags, repeat `--cc-arg`. For the libmicrohttpd
-smoke test with vcpkg on Windows:
+Build the website:
 
 ```powershell
-$env:PATH = "D:\vcpkg\installed\x64-windows\bin;$env:PATH"
-dotnet run --project src\Cx.Cli -- run examples\microhttpd-hello.cplus --cc-arg "-ID:\vcpkg\installed\x64-windows\include" --cc-arg "-LD:\vcpkg\installed\x64-windows\lib" --cc-arg "-llibmicrohttpd-dll"
+cd site
+npm install
+npm run build
 ```
 
-The nicer experimental `HttpServer` wrapper sample is
-`examples\microhttpd-wrapper.cplus`. To keep it running while you try it in a
-browser:
+## Notes
 
-```powershell
-dotnet run --project src\Cx.Cli -- transpile examples\microhttpd-wrapper.cplus -o build\c\microhttpd-wrapper.c
-gcc build\c\microhttpd-wrapper.c -o build\bin\microhttpd-wrapper.exe "-ID:\vcpkg\installed\x64-windows\include" "-LD:\vcpkg\installed\x64-windows\lib" -llibmicrohttpd-dll
-$env:PATH = "D:\vcpkg\installed\x64-windows\bin;$env:PATH"
-.\build\bin\microhttpd-wrapper.exe
-```
+CX is an experiment. It is moving quickly, and the current codebase is still
+closer to a serious prototype than a stable language distribution.
 
-Win32/OpenGL rotating cube sample:
-
-```powershell
-dotnet run --project src\Cx.Cli -- transpile examples\win32-opengl.cplus -o build\c\win32-opengl.c
-gcc build\c\win32-opengl.c -o build\bin\win32-opengl.exe -lopengl32 -lgdi32 -luser32
-.\build\bin\win32-opengl.exe
-```
-
-If a C compiler is available:
-
-```powershell
-gcc build/c/hello.c -o build/bin/hello.exe
-.\build\bin\hello.exe
-```
-
-## Current Syntax
-
-- Modules: `module app.main;`
-- Files with the same module declaration are merged into one declaration set.
-- Module imports: `import std.math;` or `import std.math as math;`
-- Symbol imports: `from std.math import sqrt;` or `from std.math import sqrt as square_root;`
-- C includes: `include <math.h>;` or `include "local.h";`
-- C externs: `extern fn sqrt(x: double) -> double;`
-- Type aliases: `type String = char*;` and `type IntList = Vec<int>;`
-- Function type aliases: `type BinaryOp = fn (int, int) -> int;`
-- Enums: `enum ObjectType { SPHERE, PLANE }` emit C `typedef enum`.
-- Functions: `fn name(param: type) -> type { ... }`
-- Interfaces: `interface Allocator { fn alloc_bytes(size: usize) -> void*; }` emits a C struct with `void* state` and `v_` function pointers.
-- Interface calls: `allocator.alloc_bytes(128)` lowers to `allocator.v_alloc_bytes(allocator.state, 128)`.
-- Interfaces can also be used as structural constraints: `struct Arena: Allocator { ... }` requires instance methods whose first parameter is `Self*`, and `where A: Allocator` enables zero-cost generic direct dispatch.
-- Generic functions and methods with explicit calls: `Vec.with_capacity<float>(2)` and `values.add<float>(1.5)`.
-- Forward declarations are emitted automatically for CX functions.
-- Static methods: `static fn Vec.empty() -> Vec<int> { ... }`, called as `Vec.empty()` and emitted as regular C functions.
-- Struct-body methods: inside `struct Vec { static fn create(...) { ... } fn push(self: Vec*, ...) { ... } }`, the owner type is inferred; spelling `fn Vec.push(...)` inside the struct is also accepted.
-- Tagged-union body methods use the same lifting rule, so `union Thing { Sphere: Sphere; static fn sphere(...) -> Thing { ... } }` is valid.
-- Variables: `let name: type = expression;`
-- Constants: `const name: type = expression;`
-- Top-level globals: `let runs: int = 0;` and `const scale: int = 2;` emit C global declarations.
-- Fixed arrays: `let values: int[3] = { 1, 2, 3 };`
-- Foreach over fixed arrays: `foreach item in values { ... }` yields `Indexed<T>` and uses the declared array length.
-- Null pointers: `let next: Node* = null;` (`null` is rejected for obvious non-pointer or arithmetic uses.)
-- Generic structs: `struct Slice<T> { data: T*; length: usize; }`
-- Struct requirement clauses: `struct Vec<T>: IndexedIterable<T> { ... }` validate required fields/methods at compile time.
-- Standard generic containers: `Slice<T>`, `Vec<T>`, `Stack<T>`, `HashSet<T>`, and `HashMap<K, V>` monomorphize to C typedefs like `Slice_u8`, `Vec_int`, and `HashMap_int_float`.
-- Generic `Vec<T>` std helpers: `Vec.create<T>`, `Vec.with_capacity<T>`, `push<T>`/`add<T>`, `insert<T>`, `get<T>`, `first<T>`, `last<T>`, `pop<T>`, `swap_remove<T>`, `reserve<T>`, `remove_at<T>`, `as_slice<T>`, `is_empty<T>`, `clear<T>`, and `free<T>`.
-- Generic `Stack<T>` std helpers: `Stack.create<T>`, `Stack.with_capacity<T>`, `push<T>`, `pop<T>`, `peek<T>`, `is_empty<T>`, and `free<T>`.
-- Generic hash collections: `HashSet<T>` and `HashMap<K, V>` use open addressing and accept caller-supplied `u64` hashes in `add`, `contains`, `remove`, `put`, and `get` until the language grows a proper hashing requirement.
-- Iteration wrappers: `Indexed<T>` for index/value loops and `KeyValue<K, V>` for key/value loops.
-- Optional values: `Option.some<T>(value)`, `Option.none<T>()`, `is_some<T>`, `is_none<T>`, `as_ptr<T>`, and `unwrap_or<T>`.
-- Borrowed strings: `StringView.from_cstr`, `slice`, `equals`, `equals_cstr`, `starts_with`, `find_char`, `parse_int`, and `print`.
-- Router: `Router<TRequest, TResponse>` from `std.router` stores fixed routes, supports exact paths and `{param}` segments, passes `RouteContext<TRequest>*` to handlers, and returns `Option<TResponse>`.
-- Structural requirements: `requires Iterator<T> { fn next(self: Self*) -> bool; value: T; }`
-- Generic parameter requirements: `struct HashSet<T> where T: Hash<T> + Equal<T> { ... }`
-- Three-way comparison: `left <=> right` lowers through `Compare<T>` as `compare(left, right)`.
-- Structs: `struct Vec2 { x: float; y: float; }`
-- Tagged unions: `union Value { Number: int; Position: Point; }`
-- Tagged union tags can be referenced as `Value.Number`, and unambiguous payload assignments auto-wrap: `value = 100;`
-- Tagged union constructors: `Value.Position(100, 200)` forwards into the payload initializer.
-- Tagged union payloads can be read as `value.Number` or `value.Position`.
-- Tagged union matching: `match value { Number: n => return n; _ => return 0; }`
-- Struct constructors: `Point(100, 200)` emits a field-order compound literal.
-- Named struct initializers: `Point { x: 100, y: 200 }` emits a C designated compound literal.
-- Named interface initializers: `Allocator { state: arena, v_alloc_bytes: arena_alloc_bytes }` emits a C designated compound literal.
-- Methods: `fn Vec2.length(self: Vec2*) -> double { ... }`, emitted as regular C functions.
-- `Self` inside owned functions aliases the owner type, so `fn Counter.reset(self: Self*)` is valid.
-- Attribute declarations: `attribute json_name on field { name: char*; }`
-- Attribute applications: `@derive(Debug)` and `@json_name("id")` are parsed and target-checked for future macro/derive expansion.
-- `@derive(Debug)` generates a `debug(self: Type*)` method for non-generic structs; `@debug_skip` fields are omitted.
-- Non-capturing lambdas lower to generated functions for function-pointer use: `fn(left: int, right: int) => left <=> right` and `fn(req: HttpRequest*) -> HttpResponse { return HttpResponse.text("ok"); }`.
-- C interop type spelling accepts `struct Name*`, `union Name*`, `enum Name`, and `const char*`.
-- CLI `run` accepts native compiler options with `--cc-arg`, useful for linking external C libraries.
-- Returns: `return expression;`
-- Control flow: `if`, `else if`, `else`, `while`, and `for` blocks.
-- Switch statements: `switch (value) { case SPHERE: { ... } default: { ... } }`
-- Foreach over fixed arrays and `data: T*` + `length: usize` structures yields `Indexed<T>` wrappers with `item.index` and `item.value`.
-- Protocol foundation: named `requires` blocks describe structural requirements and are parsed into the compiler model.
-- Requirement matching: the compiler can structurally match fields and methods, infer generic requirement parameters, and report requirement failures.
-- Plain C-style expressions, calls, field access, pointer operators, and array indexing are passed through.
-- Pointer `.field` lowering works for pointer parameters and local pointer variables, so `thing.type` lowers to `thing->type` when `thing` is `Thing*`.
-
-Protocol syntax:
-
-```c
-requires IndexedIterable<T> {
-    data: T*;
-    length: usize;
-}
-
-requires Iterable<T, I> {
-    fn iterator(self: Self*) -> I;
-}
-
-requires Iterator<T> {
-    fn next(self: Self*) -> bool;
-    value: T;
-}
-
-requires Equal<T> {
-    fn equals(left: T, right: T) -> bool;
-}
-
-requires Hash<T> {
-    fn hash(value: T) -> u64;
-}
-
-requires Compare<T> {
-    fn compare(left: T, right: T) -> int;
-}
-```
-
-`requires` declarations do not emit C. They are the semantic foundation for
-structural checks; `foreach` now uses the matcher for `IndexedIterable<T>` and
-still emits a direct indexed loop for `Slice<T>` and `Vec<T>` shapes.
-Generic `where` clauses validate concrete generic uses, so `HashSet<T>` can
-state that its key type must satisfy `Hash<T> + Equal<T>`. The first std
-implementations provide those core requirements for `int`; broader primitive
-coverage and requirement-function name mangling are still future work.
-
-## Direction
-
-The solution is split into two assemblies:
-
-- `Cx.Compiler`: reusable compiler library with `Lexer`, `Parser`, `Syntax`, and `Diagnostics` folders.
-- `Cx.Cli`: command-line file IO and argument handling.
-
-The lexer follows a matcher-table design like `Rest.Parser`: add keywords in
-`KeywordDefinitions`, fixed text tokens in `TokenDefinitions`, or a custom
-`ITokenMatcher` implementation for richer token rules.
-
-Good next steps are diagnostics with richer source spans, modules/includes,
-structs, and a small formatter or language server surface.
+Contributions, experiments, examples, bug reports, and design feedback are very
+welcome.
