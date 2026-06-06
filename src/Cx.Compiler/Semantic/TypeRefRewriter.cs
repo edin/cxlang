@@ -44,6 +44,7 @@ internal static class TypeRefRewriter
         type switch
         {
             TypeRef.Named named => RewriteNamed(named, rewriteNamed),
+            TypeRef.Alias alias => new TypeRef.Alias(alias.Name, Rewrite(alias.Target, rewriteNamed)),
             TypeRef.Pointer pointer => new TypeRef.Pointer(Rewrite(pointer.Element, rewriteNamed)),
             TypeRef.FixedArray array => new TypeRef.FixedArray(Rewrite(array.Element, rewriteNamed), array.Length),
             TypeRef.Function function => new TypeRef.Function(

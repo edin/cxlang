@@ -7,6 +7,7 @@ internal static class TypeRefFormatter
         {
             TypeRef.Unknown => "unknown",
             TypeRef.Null => "null",
+            TypeRef.Alias alias => alias.Name,
             TypeRef.Named named when named.Arguments.Count == 0 => named.Name,
             TypeRef.Named named => $"{named.Name}<{string.Join(",", named.Arguments.Select(ToCxString))}>",
             TypeRef.Pointer pointer => ToCxString(pointer.Element) + "*",

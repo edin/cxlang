@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Cx.Compiler.Syntax.Nodes;
 
 namespace Cx.Compiler.Semantic;
@@ -521,14 +520,7 @@ public sealed class RequirementMatcher
     }
 
     private static string Substitute(string type, IReadOnlyDictionary<string, string> bindings)
-    {
-        foreach (var (name, value) in bindings)
-        {
-            type = Regex.Replace(type, $@"\b{Regex.Escape(name)}\b", value);
-        }
-
-        return type;
-    }
+        => GenericTypeStringRewriter.Substitute(type, bindings);
 
     private bool SameType(string left, string right) =>
         LowerType(ResolveAlias(left)) == LowerType(ResolveAlias(right));

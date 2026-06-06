@@ -1,11 +1,16 @@
 using System.Text;
-using System.Text.RegularExpressions;
+using Cx.Compiler.Semantic;
+using Cx.Compiler.Syntax;
 using Cx.Compiler.Syntax.Nodes;
 
 namespace Cx.Compiler.C;
 
 internal static class CTypeLowerer
 {
+    private static readonly TypeRefParser TypeParser = new(new ProgramNode(
+        new Location(new SourceFile("<c-type-lowerer>", string.Empty), 0, 1, 1),
+        []));
+
     public static string LowerType(
         string type,
         IReadOnlyList<TypeAdapterNode> typeAdapters,
@@ -49,6 +54,27 @@ internal static class CTypeLowerer
         return $"{name}_{string.Join("_", arguments)}{pointerSuffix}";
     }
 
+    public static string LowerType(
+        TypeRef type,
+        IReadOnlyList<TypeAdapterNode> typeAdapters,
+        TypeRef? selfType = null)
+    {
+        type = SubstituteSelf(type, selfType);
+        type = ResolveAdapterStorageType(type, typeAdapters);
+
+        return type switch
+        {
+            TypeRef.Unknown => "unknown",
+            TypeRef.Null => "NULL",
+            TypeRef.Alias alias => StripModuleQualifier(alias.Name),
+            TypeRef.Named named => LowerNamedType(named, typeAdapters),
+            TypeRef.Pointer pointer => LowerType(pointer.Element, typeAdapters) + "*",
+            TypeRef.FixedArray array => LowerType(array.Element, typeAdapters),
+            TypeRef.Function => TypeRefFormatter.ToCxString(type),
+            _ => TypeRefFormatter.ToCxString(type),
+        };
+    }
+
     public static string LowerDeclaration(
         string type,
         string name,
@@ -65,6 +91,23 @@ internal static class CTypeLowerer
         return $"{LowerType(elementType, typeAdapters, selfType)} {name}{suffix}";
     }
 
+    public static string LowerDeclaration(
+        TypeRef type,
+        string name,
+        IReadOnlyList<TypeAdapterNode> typeAdapters,
+        TypeRef? selfType = null)
+    {
+        type = SubstituteSelf(type, selfType);
+        type = ResolveAdapterStorageType(type, typeAdapters);
+        if (type is TypeRef.Function function)
+        {
+            return $"{LowerType(function.ReturnType, typeAdapters)} (*{name})({string.Join(", ", function.Parameters.Select(parameter => LowerFunctionTypeParameter(parameter, typeAdapters)))})";
+        }
+
+        var (elementType, suffix) = SplitArrayType(type);
+        return $"{LowerType(elementType, typeAdapters)} {name}{suffix}";
+    }
+
     public static string LowerParameterDeclaration(
         ParameterNode parameter,
         IReadOnlyList<TypeAdapterNode> typeAdapters,
@@ -72,6 +115,17 @@ internal static class CTypeLowerer
         parameter.IsVariadic
             ? "..."
             : LowerDeclaration(parameter.Type, parameter.Name, typeAdapters, selfType);
+
+    public static string LowerParameterDeclaration(
+        ParameterNode parameter,
+        TypeRef? parameterType,
+        IReadOnlyList<TypeAdapterNode> typeAdapters,
+        TypeRef? selfType = null) =>
+        parameter.IsVariadic
+            ? "..."
+            : parameterType is null
+                ? LowerDeclaration(parameter.Type, parameter.Name, typeAdapters, selfType is null ? null : TypeRefFormatter.ToCxString(selfType))
+                : LowerDeclaration(parameterType, parameter.Name, typeAdapters, selfType);
 
     public static string ResolveAdapterStorageType(
         string type,
@@ -111,9 +165,7 @@ internal static class CTypeLowerer
     }
 
     public static string SubstituteSelfType(string type, string? selfType) =>
-        string.IsNullOrWhiteSpace(selfType)
-            ? type
-            : Regex.Replace(type, @"\bSelf\b", selfType);
+        GenericTypeStringRewriter.SubstituteSelf(type, selfType);
 
     public static string NormalizeType(string type) => type.TrimEnd('*').TrimEnd();
 
@@ -291,6 +343,79 @@ internal static class CTypeLowerer
             ? "..."
             : LowerType(parameter, typeAdapters, selfType);
 
+    private static string LowerFunctionTypeParameter(
+        TypeRef parameter,
+        IReadOnlyList<TypeAdapterNode> typeAdapters) =>
+        LowerType(parameter, typeAdapters);
+
+    private static string LowerNamedType(
+        TypeRef.Named named,
+        IReadOnlyList<TypeAdapterNode> typeAdapters)
+    {
+        var name = StripModuleQualifier(named.Name);
+        if (named.Arguments.Count == 0)
+        {
+            return name;
+        }
+
+        var arguments = named.Arguments
+            .Select(argument => LowerType(argument, typeAdapters))
+            .Select(SanitizeTypeName);
+        return $"{name}_{string.Join("_", arguments)}";
+    }
+
+    private static TypeRef SubstituteSelf(TypeRef type, TypeRef? selfType) =>
+        selfType is null ? type : TypeRefRewriter.SubstituteSelf(type, selfType);
+
+    private static TypeRef ResolveAdapterStorageType(
+        TypeRef type,
+        IReadOnlyList<TypeAdapterNode> typeAdapters)
+    {
+        if (type is TypeRef.Pointer pointer)
+        {
+            return new TypeRef.Pointer(ResolveAdapterStorageType(pointer.Element, typeAdapters));
+        }
+
+        if (type is TypeRef.Alias)
+        {
+            return type;
+        }
+
+        if (type is not TypeRef.Named named)
+        {
+            return type;
+        }
+
+        var adapterName = named.Name;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        while (true)
+        {
+            var adapter = typeAdapters.LastOrDefault(adapter => adapter.Name == adapterName);
+            if (adapter is null || !seen.Add(adapter.Name))
+            {
+                return named;
+            }
+
+            if (adapter.TypeParameters.Count != named.Arguments.Count)
+            {
+                return named;
+            }
+
+            var substitutions = adapter.TypeParameters
+                .Zip(named.Arguments)
+                .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
+            var baseType = TypeParser.Parse(adapter.BaseType);
+            var resolved = TypeRefRewriter.Substitute(baseType, substitutions);
+            if (resolved is not TypeRef.Named resolvedNamed)
+            {
+                return resolved;
+            }
+
+            named = resolvedNamed;
+            adapterName = named.Name;
+        }
+    }
+
     private static string SubstituteAdapterBaseType(
         TypeAdapterNode adapter,
         IReadOnlyList<string> receiverArguments)
@@ -303,19 +428,7 @@ internal static class CTypeLowerer
         var substitutions = adapter.TypeParameters
             .Zip(receiverArguments)
             .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
-        return SubstituteGenericType(adapter.BaseType, substitutions);
-    }
-
-    private static string SubstituteGenericType(
-        string type,
-        IReadOnlyDictionary<string, string> substitutions)
-    {
-        foreach (var (parameter, argument) in substitutions)
-        {
-            type = Regex.Replace(type, $@"\b{Regex.Escape(parameter)}\b", argument);
-        }
-
-        return type;
+        return GenericTypeStringRewriter.Substitute(adapter.BaseType, substitutions);
     }
 
     private static string StripModuleQualifier(string type)
@@ -345,6 +458,18 @@ internal static class CTypeLowerer
 
             suffixBuilder.Insert(0, type[openBracket..]);
             type = type[..openBracket];
+        }
+
+        return (type, suffixBuilder.ToString());
+    }
+
+    private static (TypeRef ElementType, string Suffix) SplitArrayType(TypeRef type)
+    {
+        var suffixBuilder = new StringBuilder();
+        while (type is TypeRef.FixedArray array)
+        {
+            suffixBuilder.Insert(0, $"[{array.Length}]");
+            type = array.Element;
         }
 
         return (type, suffixBuilder.ToString());

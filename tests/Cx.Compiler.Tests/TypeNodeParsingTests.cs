@@ -86,7 +86,9 @@ public sealed class TypeNodeParsingTests
         Assert.Equal(parameter.Semantic.Type, parameter.TypeNode?.Semantic.Type);
         Assert.Equal(local.Semantic.Type, local.TypeNode?.Semantic.Type);
 
-        var resolvedReturn = Assert.IsType<TypeRef.Named>(function.ReturnTypeNode?.Semantic.Type);
+        var resolvedReturnAlias = Assert.IsType<TypeRef.Alias>(function.ReturnTypeNode?.Semantic.Type);
+        Assert.Equal("IntBox", resolvedReturnAlias.Name);
+        var resolvedReturn = Assert.IsType<TypeRef.Named>(resolvedReturnAlias.Target);
         Assert.Equal("Box", resolvedReturn.Name);
         Assert.Equal("int", Assert.IsType<TypeRef.Named>(Assert.Single(resolvedReturn.Arguments)).Name);
     }

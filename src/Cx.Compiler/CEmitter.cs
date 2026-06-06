@@ -368,14 +368,14 @@ public sealed class CEmitter
 
         return new CTypeAliasDeclaration(
             typeAlias.Name,
-            LowerType(typeAlias.TargetType));
+            LowerType(typeAlias.TargetTypeNode, typeAlias.TargetType));
     }
 
     private static CFunctionDeclaration ToCFunctionDeclaration(FunctionNode function)
     {
         var selfType = ResolveSelfType(function);
         return new CFunctionDeclaration(
-            LowerType(function.ReturnType, selfType),
+            LowerType(function.ReturnTypeNode, function.ReturnType, selfType),
             GetCFunctionName(function),
             function.Parameters
                 .Select(parameter => LowerParameterDeclaration(parameter, selfType))
@@ -505,7 +505,7 @@ public sealed class CEmitter
         ImportedNameLowerer nameLowerer) => initializer switch
     {
         ForDeclarationInitializerNode declaration => new CDeclarationForInitializer(
-            $"{(declaration.IsConst ? "const " : "")}{LowerDeclaration(declaration.Type, declaration.Name, nameLowerer.SelfType)}",
+            $"{(declaration.IsConst ? "const " : "")}{LowerDeclaration(declaration.TypeNode, declaration.Type, declaration.Name, nameLowerer.SelfType)}",
             declaration.Initializer is null
                 ? null
                 : nameLowerer.LowerInitializerExpression(declaration.Type, declaration.Initializer)),
@@ -871,7 +871,7 @@ public sealed class CEmitter
         ImportedNameLowerer nameLowerer)
     {
         var declaration = (let.IsConst ? "const " : "")
-            + LowerDeclaration(let.Type, let.Name, nameLowerer.SelfType);
+            + LowerDeclaration(let.TypeNode, let.Type, let.Name, nameLowerer.SelfType);
         var initializer = let.Initializer is null
             ? null
             : nameLowerer.LowerInitializerExpression(let.Type, let.Initializer);
@@ -890,7 +890,7 @@ public sealed class CEmitter
 
     private static CFunctionDeclaration ToCFunctionDeclaration(ExternFunctionNode function) =>
         new(
-            LowerType(function.ReturnType),
+            LowerType(function.ReturnTypeNode, function.ReturnType),
             function.Name,
             function.Parameters
                 .Select(parameter => LowerParameterDeclaration(parameter))
@@ -900,7 +900,7 @@ public sealed class CEmitter
         GlobalVariableNode global,
         ImportedNameLowerer nameLowerer)
     {
-        var declaration = (global.IsConst ? "const " : "") + LowerDeclaration(global.Type, global.Name);
+        var declaration = (global.IsConst ? "const " : "") + LowerDeclaration(global.TypeNode, global.Type, global.Name);
         var initializer = global.Initializer is null
             ? null
             : nameLowerer.LowerInitializerExpression(global.Type, global.Initializer);
@@ -1270,7 +1270,7 @@ public sealed class CEmitter
         var selfPointerType = structNode.Name + "*";
         return field.Type == selfPointerType
             ? $"struct {structNode.Name}* {field.Name}"
-            : LowerDeclaration(field.Type, field.Name);
+            : LowerDeclaration(field.TypeNode, field.Type, field.Name);
     }
 
     private static void EmitEnum(StringBuilder builder, EnumNode enumNode)
@@ -1753,16 +1753,16 @@ public sealed class CEmitter
 
     private static string EmitLetStatement(LetStatement let, ImportedNameLowerer nameLowerer) => let switch
     {
-        LetStatement declaration when declaration.Initializer is null => $"{(declaration.IsConst ? "const " : "")}{LowerDeclaration(declaration.Type, declaration.Name, nameLowerer.SelfType)};",
-        LetStatement declaration => $"{(declaration.IsConst ? "const " : "")}{LowerDeclaration(declaration.Type, declaration.Name, nameLowerer.SelfType)} = {nameLowerer.LowerInitializer(declaration.Type, declaration.Initializer!)};",
+        LetStatement declaration when declaration.Initializer is null => $"{(declaration.IsConst ? "const " : "")}{LowerDeclaration(declaration.TypeNode, declaration.Type, declaration.Name, nameLowerer.SelfType)};",
+        LetStatement declaration => $"{(declaration.IsConst ? "const " : "")}{LowerDeclaration(declaration.TypeNode, declaration.Type, declaration.Name, nameLowerer.SelfType)} = {nameLowerer.LowerInitializer(declaration.Type, declaration.Initializer!)};",
     };
 
     private static string EmitForInitializer(ForInitializerNode initializer, ImportedNameLowerer nameLowerer) => initializer switch
     {
         ForDeclarationInitializerNode declaration when declaration.Initializer is null =>
-            $"{(declaration.IsConst ? "const " : "")}{LowerDeclaration(declaration.Type, declaration.Name, nameLowerer.SelfType)}",
+            $"{(declaration.IsConst ? "const " : "")}{LowerDeclaration(declaration.TypeNode, declaration.Type, declaration.Name, nameLowerer.SelfType)}",
         ForDeclarationInitializerNode declaration =>
-            $"{(declaration.IsConst ? "const " : "")}{LowerDeclaration(declaration.Type, declaration.Name, nameLowerer.SelfType)} = {nameLowerer.LowerInitializer(declaration.Type, declaration.Initializer!)}",
+            $"{(declaration.IsConst ? "const " : "")}{LowerDeclaration(declaration.TypeNode, declaration.Type, declaration.Name, nameLowerer.SelfType)} = {nameLowerer.LowerInitializer(declaration.Type, declaration.Initializer!)}",
         ForExpressionInitializerNode expression => nameLowerer.Lower(expression.Expression),
         _ => string.Empty,
     };
@@ -2103,6 +2103,11 @@ public sealed class CEmitter
     private static string LowerType(string type, string? selfType = null)
         => CTypeLowerer.LowerType(type, s_typeAdapters, selfType);
 
+    private static string LowerType(TypeNode? typeNode, string fallbackType, string? selfType = null) =>
+        TryUseStructuredType(typeNode, fallbackType, out var type)
+            ? CTypeLowerer.LowerType(type, s_typeAdapters, GenericTypeSubstitutionBuilder.ParseType(selfType))
+            : LowerType(fallbackType, selfType);
+
     private static string ResolveAdapterStorageType(string type)
         => CTypeLowerer.ResolveAdapterStorageType(type, s_typeAdapters);
 
@@ -2122,14 +2127,42 @@ public sealed class CEmitter
     private static string LowerDeclaration(string type, string name, string? selfType = null)
         => CTypeLowerer.LowerDeclaration(type, name, s_typeAdapters, selfType);
 
+    private static string LowerDeclaration(TypeNode? typeNode, string fallbackType, string name, string? selfType = null) =>
+        TryUseStructuredType(typeNode, fallbackType, out var type)
+            ? CTypeLowerer.LowerDeclaration(type, name, s_typeAdapters, GenericTypeSubstitutionBuilder.ParseType(selfType))
+            : LowerDeclaration(fallbackType, name, selfType);
+
     private static string LowerParameterDeclaration(ParameterNode parameter, string? selfType = null) =>
-        CTypeLowerer.LowerParameterDeclaration(parameter, s_typeAdapters, selfType);
+        CTypeLowerer.LowerParameterDeclaration(
+            parameter,
+            TryUseStructuredType(parameter.TypeNode, parameter.Type, out var type) ? type : null,
+            s_typeAdapters,
+            GenericTypeSubstitutionBuilder.ParseType(selfType));
 
     private static string LowerFunctionTypeParameter(string parameter, string? selfType = null) =>
         parameter.Trim() == "..." ? "..." : LowerType(parameter, selfType);
 
     private static string SubstituteSelfType(string type, string? selfType) =>
         CTypeLowerer.SubstituteSelfType(type, selfType);
+
+    private static bool TryUseStructuredType(TypeNode? typeNode, string fallbackType, out TypeRef type)
+    {
+        type = null!;
+        if (typeNode?.Semantic.Type is not { } semanticType)
+        {
+            return false;
+        }
+
+        var semanticText = TypeRefFormatter.ToCxString(semanticType);
+        if (!string.Equals(semanticText, fallbackType, StringComparison.Ordinal)
+            && !string.Equals(semanticText, typeNode.TypeName, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        type = semanticType;
+        return true;
+    }
 
     private static string? ResolveSelfType(FunctionNode function)
     {
@@ -3131,6 +3164,9 @@ public sealed class CEmitter
 
         string ICExpressionLoweringContext.LowerType(string type) =>
             LowerType(type, SelfType);
+
+        string ICExpressionLoweringContext.LowerType(TypeNode? typeNode, string fallbackType) =>
+            CEmitter.LowerType(typeNode, fallbackType, SelfType);
 
         bool ICExpressionLoweringContext.ShouldUseRawLowering(string text) =>
             ShouldUseRawLowering(text);

@@ -115,6 +115,30 @@ public sealed class CompilerSmokeTests
     }
 
     [Fact]
+    public void CompileToC_KeepsAliasSpellingForGenericCNames()
+    {
+        var result = CompilerTestHelpers.Compile(
+            """
+            type usize = unsigned long long;
+
+            struct Maybe<T> {
+                has_value: bool;
+                value: T;
+            }
+
+            fn size() -> Maybe<usize> {
+                let value: Maybe<usize> = Maybe<usize>(false, 0);
+                return value;
+            }
+            """);
+
+        CompilerTestHelpers.AssertSuccess(result);
+        Assert.Contains("Maybe_usize size()", result.Output);
+        Assert.Contains("Maybe_usize value =", result.Output);
+        Assert.DoesNotContain("Maybe_unsignedlonglong", result.Output);
+    }
+
+    [Fact]
     public void CompileTestsToC_GeneratesRunnerForTestBlock()
     {
         var result = new CxCompiler().CompileTestsToC(

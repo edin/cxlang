@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Cx.Compiler.Lowering;
+namespace Cx.Compiler.Semantic;
 
 internal static class GenericTypeStringRewriter
 {
@@ -17,7 +17,7 @@ internal static class GenericTypeStringRewriter
     }
 
     public static string SubstituteSelf(string type, string? selfType) =>
-        selfType is null
+        string.IsNullOrWhiteSpace(selfType)
             ? type
             : Regex.Replace(type, @"\bSelf\b", selfType);
 

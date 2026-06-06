@@ -10,6 +10,8 @@ internal abstract record TypeRef
 
     public sealed record Named(string Name, IReadOnlyList<TypeRef> Arguments) : TypeRef;
 
+    public sealed record Alias(string Name, TypeRef Target) : TypeRef;
+
     public sealed record Pointer(TypeRef Element) : TypeRef;
 
     public sealed record FixedArray(TypeRef Element, string Length) : TypeRef;
@@ -84,9 +86,16 @@ internal sealed class TypeRefParser(ProgramNode program)
             return fixedArray;
         }
 
-        if (_aliases.TryGetValue(type, out var targetType) && resolvingAliases.Add(type))
+        if (_aliases.TryGetValue(type, out var targetType))
         {
-            return Parse(targetType, resolvingAliases);
+            if (!resolvingAliases.Add(type))
+            {
+                return new TypeRef.Named(type, []);
+            }
+
+            var target = Parse(targetType, resolvingAliases);
+            resolvingAliases.Remove(type);
+            return new TypeRef.Alias(type, target);
         }
 
         if (TryParseGenericUse(type, out var name, out var arguments))
@@ -306,6 +315,9 @@ internal sealed class TypeCompatibility(TypeRefParser parser)
 
     private bool IsAssignable(TypeRef target, TypeRef source)
     {
+        target = UnwrapAlias(target);
+        source = UnwrapAlias(source);
+
         if (target is TypeRef.Unknown || source is TypeRef.Unknown)
         {
             return true;
@@ -356,6 +368,9 @@ internal sealed class TypeCompatibility(TypeRefParser parser)
 
     private bool IsAssignablePointer(TypeRef target, TypeRef source)
     {
+        target = UnwrapAlias(target);
+        source = UnwrapAlias(source);
+
         if (IsAssignable(target, source))
         {
             return true;
@@ -378,9 +393,19 @@ internal sealed class TypeCompatibility(TypeRefParser parser)
     }
 
     private static bool IsVoidPointerElement(TypeRef type) =>
-        type is TypeRef.Named { Name: "void" or "const void", Arguments: { Count: 0 } };
+        UnwrapAlias(type) is TypeRef.Named { Name: "void" or "const void", Arguments: { Count: 0 } };
 
-    private static bool IsUnknown(TypeRef type) => type is TypeRef.Unknown;
+    private static bool IsUnknown(TypeRef type) => UnwrapAlias(type) is TypeRef.Unknown;
+
+    private static TypeRef UnwrapAlias(TypeRef type)
+    {
+        while (type is TypeRef.Alias alias)
+        {
+            type = alias.Target;
+        }
+
+        return type;
+    }
 
     private bool IsIntegerCompatible(string name)
     {
@@ -427,6 +452,7 @@ internal sealed class TypeCompatibility(TypeRefParser parser)
     {
         TypeRef.Unknown => "unknown",
         TypeRef.Null => "null",
+        TypeRef.Alias alias => alias.Name,
         TypeRef.Named named when named.Arguments.Count == 0 => named.Name,
         TypeRef.Named named => $"{named.Name}<{string.Join(", ", named.Arguments.Select(Format))}>",
         TypeRef.Pointer pointer => $"{Format(pointer.Element)}*",

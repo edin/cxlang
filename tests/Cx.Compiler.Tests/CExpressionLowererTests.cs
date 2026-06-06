@@ -119,6 +119,8 @@ public sealed class CExpressionLowererTests
 
         public string LowerType(string type) => typePrefix + type;
 
+        public string LowerType(TypeNode? typeNode, string fallbackType) => LowerType(fallbackType);
+
         public bool ShouldUseRawLowering(string text) => false;
 
         public bool ShouldUseRawAssignmentLowering(string text) => false;

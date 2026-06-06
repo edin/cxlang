@@ -483,7 +483,7 @@ internal sealed class ExpressionTypeResolver(
                 : receiverTypeArguments.Count == instanceFunction.TypeParameters.Count
                     ? receiverTypeArguments
                     : InferFunctionTypeArguments(instanceFunction.TypeParameters, instanceFunction.Parameters, arguments, variables, skipSelf: true, receiverTypeArguments) ?? [];
-            return SubstituteSelfType(
+            return GenericTypeStringRewriter.SubstituteSelf(
                 ResolveFunctionReturnType(instanceFunction, instanceArguments),
                 normalizedType);
         }
@@ -530,7 +530,7 @@ internal sealed class ExpressionTypeResolver(
                         .Zip(arguments)
                         .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal)
                     : new Dictionary<string, string>(StringComparer.Ordinal);
-                return SubstituteGenericType(function.ReturnType, substitutions);
+                return GenericTypeStringRewriter.Substitute(function.ReturnType, substitutions);
             }
         }
 
@@ -568,7 +568,7 @@ internal sealed class ExpressionTypeResolver(
         var substitutions = adapter.TypeParameters
             .Zip(receiverArguments)
             .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
-        return SubstituteGenericType(adapter.BaseType, substitutions);
+        return GenericTypeStringRewriter.Substitute(adapter.BaseType, substitutions);
     }
 
     public IReadOnlyList<string>? InferFunctionTypeArguments(
@@ -721,10 +721,10 @@ internal sealed class ExpressionTypeResolver(
         var substitutions = function.TypeParameters
             .Zip(arguments)
             .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
-        var returnType = SubstituteGenericType(function.ReturnType, substitutions);
+        var returnType = GenericTypeStringRewriter.Substitute(function.ReturnType, substitutions);
         return function.OwnerType is null
             ? returnType
-            : SubstituteSelfType(returnType, BuildSelfType(function, arguments));
+            : GenericTypeStringRewriter.SubstituteSelf(returnType, BuildSelfType(function, arguments));
     }
 
     private static string ResolveExternFunctionReturnType(
@@ -739,7 +739,7 @@ internal sealed class ExpressionTypeResolver(
         var substitutions = function.TypeParameters
             .Zip(explicitArguments)
             .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
-        return SubstituteGenericType(function.ReturnType, substitutions);
+        return GenericTypeStringRewriter.Substitute(function.ReturnType, substitutions);
     }
 
     private static string BuildSelfType(FunctionNode function, IReadOnlyList<string> arguments)
@@ -778,7 +778,7 @@ internal sealed class ExpressionTypeResolver(
             return definition with
             {
                 Fields = definition.Fields
-                    .Select(field => field with { Type = SubstituteGenericType(field.Type, substitutions) })
+                    .Select(field => field with { Type = GenericTypeStringRewriter.Substitute(field.Type, substitutions) })
                     .ToList(),
             };
         }
@@ -976,16 +976,4 @@ internal sealed class ExpressionTypeResolver(
         return -1;
     }
 
-    private static string SubstituteGenericType(string type, IReadOnlyDictionary<string, string> substitutions)
-    {
-        foreach (var (parameter, argument) in substitutions)
-        {
-            type = Regex.Replace(type, $@"\b{Regex.Escape(parameter)}\b", argument);
-        }
-
-        return type;
-    }
-
-    private static string SubstituteSelfType(string type, string selfType) =>
-        Regex.Replace(type, @"\bSelf\b", selfType);
 }

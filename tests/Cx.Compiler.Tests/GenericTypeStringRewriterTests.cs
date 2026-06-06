@@ -1,4 +1,4 @@
-using Cx.Compiler.Lowering;
+using Cx.Compiler.Semantic;
 
 namespace Cx.Compiler.Tests;
 

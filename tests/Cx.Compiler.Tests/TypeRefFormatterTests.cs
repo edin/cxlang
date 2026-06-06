@@ -40,4 +40,12 @@ public sealed class TypeRefFormatterTests
 
         Assert.Equal("u8[32]", TypeRefFormatter.ToCxString(type));
     }
+
+    [Fact]
+    public void ToCxString_FormatsAliasTypesUsingAliasName()
+    {
+        var type = new TypeRef.Alias("usize", new TypeRef.Named("unsigned long long", []));
+
+        Assert.Equal("usize", TypeRefFormatter.ToCxString(type));
+    }
 }

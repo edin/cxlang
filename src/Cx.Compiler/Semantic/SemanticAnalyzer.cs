@@ -1027,7 +1027,7 @@ public sealed class SemanticAnalyzer(
                 foreach (var requirement in constraint.Requirements)
                 {
                     var arguments = requirement.TypeArguments
-                        .Select(argument => SubstituteGenericType(argument, substitutions))
+                        .Select(argument => GenericTypeStringRewriter.Substitute(argument, substitutions))
                         .ToList();
                     var match = _requirementMatcher?.Match(concreteType, requirement.Name, arguments);
                     if (match is null || match.Success)
@@ -2349,7 +2349,7 @@ public sealed class SemanticAnalyzer(
                     : new Dictionary<string, string>(StringComparer.Ordinal);
                 var parameterTypes = function.Parameters
                     .Where(parameter => !parameter.IsVariadic)
-                    .Select(parameter => SubstituteGenericType(parameter.Type, substitutions))
+                    .Select(parameter => GenericTypeStringRewriter.Substitute(parameter.Type, substitutions))
                     .ToList();
                 return new CallSignature($"{targetName}.{memberName}", parameterTypes, IsVariadic: false);
             }
@@ -2389,7 +2389,7 @@ public sealed class SemanticAnalyzer(
         var substitutions = adapter.TypeParameters
             .Zip(receiverArguments)
             .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
-        return SubstituteGenericType(adapter.BaseType, substitutions);
+        return GenericTypeStringRewriter.Substitute(adapter.BaseType, substitutions);
     }
 
     private static CallSignature BuildSignature(
@@ -2408,7 +2408,7 @@ public sealed class SemanticAnalyzer(
         var isVariadic = filteredParameters.Any(parameter => parameter.IsVariadic);
         var parameterTypes = filteredParameters
             .Where(parameter => !parameter.IsVariadic)
-            .Select(parameter => SubstituteGenericType(parameter.Type, substitutions))
+            .Select(parameter => GenericTypeStringRewriter.Substitute(parameter.Type, substitutions))
             .ToList();
         return new CallSignature(name, parameterTypes, isVariadic);
     }
@@ -2709,16 +2709,6 @@ public sealed class SemanticAnalyzer(
 
         arguments.Add(argumentsText[start..].Trim());
         return arguments;
-    }
-
-    private static string SubstituteGenericType(string type, IReadOnlyDictionary<string, string> substitutions)
-    {
-        foreach (var (parameter, argument) in substitutions)
-        {
-            type = Regex.Replace(type, $@"\b{Regex.Escape(parameter)}\b", argument);
-        }
-
-        return type;
     }
 
     private static bool IsIdentifierStart(char ch) => char.IsLetter(ch) || ch == '_';
