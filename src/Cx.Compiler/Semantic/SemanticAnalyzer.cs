@@ -106,17 +106,18 @@ public sealed class SemanticAnalyzer(
             _currentGenericConstraints = effectiveGenericConstraints;
             _expressionTypeResolver = new ExpressionTypeResolver(program, _currentTypeParameters, _currentGenericConstraints);
 
-            AnalyzeStatements(function.Body, function.ReturnType, variables, mutability, program, function.TypeParameters);
+            var functionReturnType = function.ReturnTypeNode?.Semantic.Type ?? ParseTypeRef(function.ReturnType);
+            AnalyzeStatements(function.Body, functionReturnType, variables, mutability, program, function.TypeParameters);
 
             _currentTypeParameters = previousTypeParameters;
             _currentGenericConstraints = previousGenericConstraints;
             _expressionTypeResolver = new ExpressionTypeResolver(program, _currentTypeParameters, _currentGenericConstraints);
             definiteAssignment.AnalyzeFunction(function, globalVariables);
-            if (!IsVoidType(function.ReturnType) && !returnFlow.StatementsAlwaysReturn(function.Body, variables))
+            if (!IsVoidType(functionReturnType) && !returnFlow.StatementsAlwaysReturn(function.Body, variables))
             {
                 diagnostics.Report(
                     function.Location,
-                    $"Not all code paths return a value from function '{GetFunctionDisplayName(function)}' returning '{function.ReturnType}'.");
+                    $"Not all code paths return a value from function '{GetFunctionDisplayName(function)}' returning '{FormatTypeRef(functionReturnType)}'.");
             }
         }
     }
@@ -394,7 +395,7 @@ public sealed class SemanticAnalyzer(
 
     private void AnalyzeStatements(
         IReadOnlyList<StatementNode> statements,
-        string returnType,
+        TypeRef returnType,
         Dictionary<string, string> variables,
         Dictionary<string, LocalMutability> mutability,
         ProgramNode program,
@@ -408,7 +409,7 @@ public sealed class SemanticAnalyzer(
 
     private void AnalyzeStatement(
         StatementNode statement,
-        string returnType,
+        TypeRef returnType,
         Dictionary<string, string> variables,
         Dictionary<string, LocalMutability> mutability,
         ProgramNode program,
@@ -443,14 +444,14 @@ public sealed class SemanticAnalyzer(
 
                 if (IsEmptyExpression(ret.Expression))
                 {
-                    diagnostics.Report(ret.Location, $"Function returning '{returnType}' must return a value.");
+                    diagnostics.Report(ret.Location, $"Function returning '{FormatTypeRef(returnType)}' must return a value.");
                     break;
                 }
 
                 AnalyzeExpression(ret.Expression, ret.Location, variables, mutability);
-                if (IsBareNull(ret.Expression) && !IsNullableType(ParseTypeRef(returnType)))
+                if (IsBareNull(ret.Expression) && !IsNullableType(returnType))
                 {
-                    diagnostics.Report(ret.Location, $"Cannot return null from function returning non-pointer type '{returnType}'.");
+                    diagnostics.Report(ret.Location, $"Cannot return null from function returning non-pointer type '{FormatTypeRef(returnType)}'.");
                 }
 
                 CheckAssignmentCompatibility(ret.Location, returnType, ret.Expression, variables, "return value");
@@ -968,6 +969,9 @@ public sealed class SemanticAnalyzer(
 
     private static bool IsVoidType(string type) =>
         string.Equals(type.Trim(), "void", StringComparison.Ordinal);
+
+    private static bool IsVoidType(TypeRef? type) =>
+        UnwrapAlias(type) is TypeRef.Named { Name: "void", Arguments.Count: 0 };
 
     private static bool IsEmptyExpression(ExpressionNode expression) =>
         string.IsNullOrWhiteSpace(expression.SourceText);
@@ -2182,7 +2186,7 @@ public sealed class SemanticAnalyzer(
         var calleeType = _expressionTypeResolver.Resolve(callee, variables);
         if (TryParseFunctionType(calleeType, out var parameterTypes, out _, out var isVariadic))
         {
-            return new CallSignature(callee.SourceText, parameterTypes, isVariadic);
+            return new CallSignature(callee.SourceText, parameterTypes.Select(ParseTypeRef).ToList(), isVariadic);
         }
 
         var name = GetQualifiedName(callee);
@@ -2365,7 +2369,7 @@ public sealed class SemanticAnalyzer(
                     .Where(parameter => !parameter.IsVariadic)
                     .Select(parameter => GenericTypeStringRewriter.Substitute(parameter.Type, substitutions))
                     .ToList();
-                return new CallSignature($"{targetName}.{memberName}", parameterTypes, IsVariadic: false);
+                return new CallSignature($"{targetName}.{memberName}", parameterTypes.Select(ParseTypeRef).ToList(), IsVariadic: false);
             }
         }
 
@@ -2406,7 +2410,7 @@ public sealed class SemanticAnalyzer(
         return GenericTypeStringRewriter.Substitute(adapter.BaseType, substitutions);
     }
 
-    private static CallSignature BuildSignature(
+    private CallSignature BuildSignature(
         string name,
         IReadOnlyList<string> typeParameters,
         IReadOnlyList<ParameterNode> parameters,
@@ -2423,6 +2427,7 @@ public sealed class SemanticAnalyzer(
         var parameterTypes = filteredParameters
             .Where(parameter => !parameter.IsVariadic)
             .Select(parameter => GenericTypeStringRewriter.Substitute(parameter.Type, substitutions))
+            .Select(ParseTypeRef)
             .ToList();
         return new CallSignature(name, parameterTypes, isVariadic);
     }
@@ -2457,12 +2462,12 @@ public sealed class SemanticAnalyzer(
         for (var i = 0; i < signature.ParameterTypes.Count && i < arguments.Count; i++)
         {
             var parameterType = signature.ParameterTypes[i];
-            if (string.Equals(parameterType, "any", StringComparison.Ordinal))
+            if (IsAnyType(parameterType))
             {
                 continue;
             }
 
-            var argumentType = _expressionTypeResolver.Resolve(arguments[i], variables);
+            var argumentType = _expressionTypeResolver.ResolveTypeRef(arguments[i], variables);
             if (!_typeCompatibility.CanAssign(parameterType, argumentType, out var reason))
             {
                 diagnostics.Report(
@@ -2481,6 +2486,9 @@ public sealed class SemanticAnalyzer(
 
     private static bool IsNullableType(TypeRef? type) =>
         UnwrapAlias(type) is TypeRef.Pointer;
+
+    private static bool IsAnyType(TypeRef? type) =>
+        UnwrapAlias(type) is TypeRef.Named { Name: "any", Arguments.Count: 0 };
 
     private static bool IsPointerType(string type) =>
         type.TrimEnd().EndsWith("*", StringComparison.Ordinal);
@@ -2760,7 +2768,7 @@ public sealed class SemanticAnalyzer(
 
     private sealed record CallSignature(
         string Name,
-        IReadOnlyList<string> ParameterTypes,
+        IReadOnlyList<TypeRef> ParameterTypes,
         bool IsVariadic);
 
     private sealed record GenericStructUse(string Name, IReadOnlyList<string> Arguments);
