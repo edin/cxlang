@@ -3165,6 +3165,9 @@ public sealed class CEmitter
         string ICExpressionLoweringContext.LowerType(string type) =>
             LowerType(type, SelfType);
 
+        string ICExpressionLoweringContext.LowerType(TypeRef type) =>
+            CTypeLowerer.LowerType(type, s_typeAdapters, GenericTypeSubstitutionBuilder.ParseType(SelfType));
+
         string ICExpressionLoweringContext.LowerType(TypeNode? typeNode, string fallbackType) =>
             CEmitter.LowerType(typeNode, fallbackType, SelfType);
 

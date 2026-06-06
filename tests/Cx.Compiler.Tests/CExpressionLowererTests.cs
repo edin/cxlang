@@ -1,4 +1,5 @@
 using Cx.Compiler.C;
+using Cx.Compiler.Semantic;
 using Cx.Compiler.Syntax;
 using Cx.Compiler.Syntax.Nodes;
 
@@ -45,6 +46,41 @@ public sealed class CExpressionLowererTests
 
         Assert.Equal("lowered_Vec<int>*", Assert.IsType<CCastExpression>(cast).TargetType);
         Assert.Equal("lowered_Vec<int>", Assert.IsType<CSizeOfTypeExpression>(sizeOf).TypeName);
+    }
+
+    [Fact]
+    public void LowerSimple_PrefersSemanticTypeRefOverFallbackTypeText()
+    {
+        var location = TestLocation();
+        var semanticType = new TypeRef.Named("Vec", [new TypeRef.Named("int", [])]);
+        var typeNode = new TypeNode(location, "StaleText");
+        typeNode.Semantic.Type = semanticType;
+        var context = new TestContext(typePrefix: "text_", typeRefPrefix: "typed_");
+        var lowerer = new CExpressionLowerer(context);
+
+        var cast = lowerer.LowerSimple(new CastExpressionNode(
+            location,
+            "(StaleText)value",
+            "StaleText",
+            new NameExpressionNode(location, "value"),
+            typeNode));
+        var sizeOf = lowerer.LowerSimple(new SizeOfExpressionNode(
+            location,
+            "sizeof(StaleText)",
+            "StaleText",
+            ExpressionOperand: null,
+            TypeOperandNode: typeNode));
+        var initializer = lowerer.LowerSimple(new InitializerExpressionNode(
+            location,
+            "StaleText {}",
+            "StaleText",
+            [],
+            [],
+            typeNode));
+
+        Assert.Equal("typed_Vec<int>", Assert.IsType<CCastExpression>(cast).TargetType);
+        Assert.Equal("typed_Vec<int>", Assert.IsType<CSizeOfTypeExpression>(sizeOf).TypeName);
+        Assert.Equal("typed_Vec<int>", Assert.IsType<CInitializerExpression>(initializer).TypeName);
     }
 
     [Fact]
@@ -99,6 +135,7 @@ public sealed class CExpressionLowererTests
 
     private sealed class TestContext(
         string typePrefix = "",
+        string typeRefPrefix = "",
         CExpression? memberOverride = null) : ICExpressionLoweringContext
     {
         public string? SelfType => null;
@@ -118,6 +155,8 @@ public sealed class CExpressionLowererTests
         public string LowerRawText(string text) => text;
 
         public string LowerType(string type) => typePrefix + type;
+
+        public string LowerType(TypeRef type) => typeRefPrefix + TypeRefFormatter.ToCxString(type);
 
         public string LowerType(TypeNode? typeNode, string fallbackType) => LowerType(fallbackType);
 

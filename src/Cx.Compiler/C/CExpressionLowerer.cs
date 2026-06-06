@@ -1,3 +1,4 @@
+using Cx.Compiler.Semantic;
 using Cx.Compiler.Syntax.Nodes;
 
 namespace Cx.Compiler.C;
@@ -17,6 +18,8 @@ internal interface ICExpressionLoweringContext
     string LowerRawText(string text);
 
     string LowerType(string type);
+
+    string LowerType(TypeRef type);
 
     string LowerType(TypeNode? typeNode, string fallbackType);
 
@@ -43,7 +46,7 @@ internal sealed class CExpressionLowerer(ICExpressionLoweringContext context)
         NameExpressionNode name => context.LowerNameExpression(name),
         ParenthesizedExpressionNode parenthesized => new CParenthesizedExpression(context.LowerExpression(parenthesized.Expression)),
         CastExpressionNode cast => new CCastExpression(
-            context.LowerType(cast.TargetTypeNode, cast.TargetType),
+            LowerType(cast.TargetTypeNode, cast.TargetType),
             context.LowerExpression(cast.Expression)),
         UnaryExpressionNode { Operator: "&" } unary => context.LowerAddressOfExpression(unary.Operand),
         UnaryExpressionNode { Operator: "*" } unary => new CUnaryExpression(
@@ -81,7 +84,7 @@ internal sealed class CExpressionLowerer(ICExpressionLoweringContext context)
     {
         if (!string.IsNullOrWhiteSpace(sizeOf.TypeOperand))
         {
-            return new CSizeOfTypeExpression(context.LowerType(sizeOf.TypeOperandNode, sizeOf.TypeOperand));
+            return new CSizeOfTypeExpression(LowerType(sizeOf.TypeOperandNode, sizeOf.TypeOperand));
         }
 
         return sizeOf.ExpressionOperand is null
@@ -107,7 +110,7 @@ internal sealed class CExpressionLowerer(ICExpressionLoweringContext context)
         LiteralExpressionNode literal => LowerLiteral(literal.SourceText),
         NameExpressionNode name => emitter.Emit(context.LowerNameExpression(name)),
         ParenthesizedExpressionNode parenthesized => $"({context.Lower(parenthesized.Expression)})",
-        CastExpressionNode cast => $"({context.LowerType(cast.TargetTypeNode, cast.TargetType)}) {context.Lower(cast.Expression)}",
+        CastExpressionNode cast => $"({LowerType(cast.TargetTypeNode, cast.TargetType)}) {context.Lower(cast.Expression)}",
         UnaryExpressionNode { Operator: "&" } unary => emitter.Emit(context.LowerAddressOfExpression(unary.Operand)),
         UnaryExpressionNode unary => context.ShouldUseRawLowering(unary.SourceText)
             ? context.LowerRawText(unary.SourceText)
@@ -128,7 +131,7 @@ internal sealed class CExpressionLowerer(ICExpressionLoweringContext context)
 
     public CExpression LowerInitializer(InitializerExpressionNode initializer, string? targetType = null) =>
         new CInitializerExpression(
-            initializer.TypeName is null ? null : context.LowerType(initializer.TypeNameNode, initializer.TypeName),
+            initializer.TypeName is null ? null : LowerType(initializer.TypeNameNode, initializer.TypeName),
             initializer.Fields
                 .Select(field => new CInitializerField(field.Name, context.LowerExpression(field.Value)))
                 .ToList(),
@@ -174,4 +177,9 @@ internal sealed class CExpressionLowerer(ICExpressionLoweringContext context)
         "null" => "NULL",
         _ => text,
     };
+
+    private string LowerType(TypeNode? typeNode, string fallbackType) =>
+        typeNode?.Semantic.Type is { } type
+            ? context.LowerType(type)
+            : context.LowerType(typeNode, fallbackType);
 }
