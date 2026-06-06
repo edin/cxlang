@@ -1662,25 +1662,7 @@ public sealed class CEmitter
             .ToList();
 
     private static bool TryParseFixedArrayType(string type, out string elementType, out string length)
-    {
-        elementType = string.Empty;
-        length = string.Empty;
-        type = type.Trim();
-        if (!type.EndsWith("]", StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        var openBracket = type.LastIndexOf('[');
-        if (openBracket < 0)
-        {
-            return false;
-        }
-
-        elementType = type[..openBracket].Trim();
-        length = type[(openBracket + 1)..^1].Trim();
-        return !string.IsNullOrWhiteSpace(elementType) && !string.IsNullOrWhiteSpace(length);
-    }
+        => CTypeLowerer.TryParseFixedArrayType(type, out elementType, out length);
 
     private static string GetCFunctionName(FunctionNode function) =>
         s_nameMangler.FunctionName(function);
@@ -1695,12 +1677,8 @@ public sealed class CEmitter
                 ? function.OwnerType
                 : LowerType($"{function.OwnerType}<{string.Join(",", function.TypeArguments)}>");
 
-    private static string? GetGenericBaseName(string type)
-    {
-        type = type.TrimEnd('*').TrimEnd();
-        var genericStart = type.IndexOf('<', StringComparison.Ordinal);
-        return genericStart < 0 ? null : type[..genericStart];
-    }
+    private static string? GetGenericBaseName(string type) =>
+        CTypeLowerer.GetGenericBaseName(type);
 
     private static bool TrySplitQualifiedMember(string text, out string ownerName, out string memberName)
     {
@@ -2123,79 +2101,10 @@ public sealed class CEmitter
         new string(' ', indentLevel * 4) + text + Environment.NewLine;
 
     private static string LowerType(string type, string? selfType = null)
-    {
-        type = SubstituteSelfType(type, selfType);
-        type = ResolveAdapterStorageType(type);
-
-        if (TryParseFunctionType(type, out _, out _))
-        {
-            return type;
-        }
-
-        type = SplitArrayType(type).ElementType;
-
-        var pointerSuffix = "";
-        while (type.EndsWith("*", StringComparison.Ordinal))
-        {
-            pointerSuffix += "*";
-            type = type[..^1];
-        }
-
-        var genericStart = type.IndexOf('<', StringComparison.Ordinal);
-        if (genericStart < 0)
-        {
-            return StripModuleQualifier(type) + pointerSuffix;
-        }
-
-        var genericEnd = type.LastIndexOf('>');
-        if (genericEnd < genericStart)
-        {
-            return type + pointerSuffix;
-        }
-
-        var name = StripModuleQualifier(type[..genericStart]);
-        var arguments = type[(genericStart + 1)..genericEnd]
-            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Select(argument => LowerType(argument, selfType))
-            .Select(SanitizeTypeName);
-
-        return $"{name}_{string.Join("_", arguments)}{pointerSuffix}";
-    }
+        => CTypeLowerer.LowerType(type, s_typeAdapters, selfType);
 
     private static string ResolveAdapterStorageType(string type)
-    {
-        var prefix = "";
-        if (type.StartsWith("const ", StringComparison.Ordinal))
-        {
-            prefix = "const ";
-            type = type["const ".Length..].TrimStart();
-        }
-
-        var pointerSuffix = "";
-        while (type.EndsWith("*", StringComparison.Ordinal))
-        {
-            pointerSuffix += "*";
-            type = type[..^1].TrimEnd();
-        }
-
-        var adapterName = GetGenericBaseName(type) ?? type;
-
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        while (true)
-        {
-            var adapter = s_typeAdapters.LastOrDefault(adapter => adapter.Name == adapterName);
-            if (adapter is null || !seen.Add(adapter.Name))
-            {
-                return prefix + type + pointerSuffix;
-            }
-
-            var receiverArguments = TryParseGenericUse(type, out _, out var parsedArguments)
-                ? parsedArguments
-                : [];
-            type = SubstituteAdapterBaseType(adapter, receiverArguments);
-            adapterName = GetGenericBaseName(type) ?? type;
-        }
-    }
+        => CTypeLowerer.ResolveAdapterStorageType(type, s_typeAdapters);
 
     private static string StripModuleQualifier(string type)
     {
@@ -2211,31 +2120,16 @@ public sealed class CEmitter
     }
 
     private static string LowerDeclaration(string type, string name, string? selfType = null)
-    {
-        type = SubstituteSelfType(type, selfType);
-        if (TryParseFunctionType(type, out var parameters, out var returnType))
-        {
-            return $"{LowerType(returnType, selfType)} (*{name})({string.Join(", ", parameters.Select(parameter => LowerFunctionTypeParameter(parameter, selfType)))})";
-        }
-
-        var (elementType, suffix) = SplitArrayType(type);
-        return $"{LowerType(elementType, selfType)} {name}{suffix}";
-    }
+        => CTypeLowerer.LowerDeclaration(type, name, s_typeAdapters, selfType);
 
     private static string LowerParameterDeclaration(ParameterNode parameter, string? selfType = null) =>
-        parameter.IsVariadic
-            ? "..."
-            : LowerDeclaration(parameter.Type, parameter.Name, selfType);
+        CTypeLowerer.LowerParameterDeclaration(parameter, s_typeAdapters, selfType);
 
     private static string LowerFunctionTypeParameter(string parameter, string? selfType = null) =>
-        parameter.Trim() == "..."
-            ? "..."
-            : LowerType(parameter, selfType);
+        parameter.Trim() == "..." ? "..." : LowerType(parameter, selfType);
 
     private static string SubstituteSelfType(string type, string? selfType) =>
-        string.IsNullOrWhiteSpace(selfType)
-            ? type
-            : Regex.Replace(type, @"\bSelf\b", selfType);
+        CTypeLowerer.SubstituteSelfType(type, selfType);
 
     private static string? ResolveSelfType(FunctionNode function)
     {
@@ -2270,17 +2164,9 @@ public sealed class CEmitter
             : function.OwnerType;
     }
 
-    private static string NormalizeType(string type) => type.TrimEnd('*').TrimEnd();
+    private static string NormalizeType(string type) => CTypeLowerer.NormalizeType(type);
 
-    private static string RemovePointer(string type)
-    {
-        while (type.TrimEnd().EndsWith("*", StringComparison.Ordinal))
-        {
-            type = type.TrimEnd()[..^1];
-        }
-
-        return type.TrimEnd();
-    }
+    private static string RemovePointer(string type) => CTypeLowerer.RemovePointer(type);
 
     private static string? GetQualifiedName(ExpressionNode expression) => expression switch
     {
@@ -2291,92 +2177,19 @@ public sealed class CEmitter
     };
 
     private static bool TryParseGenericUse(string type, out string name, out IReadOnlyList<string> arguments)
-    {
-        name = string.Empty;
-        arguments = [];
-        var genericStart = type.IndexOf('<', StringComparison.Ordinal);
-        var genericEnd = type.LastIndexOf('>');
-        if (genericStart <= 0 || genericEnd < genericStart)
-        {
-            return false;
-        }
+        => CTypeLowerer.TryParseGenericUse(type, out name, out arguments);
 
-        name = type[..genericStart].Trim();
-        arguments = SplitGenericArguments(type[(genericStart + 1)..genericEnd]);
-        return true;
-    }
-
-    private static (string ElementType, string Suffix) SplitArrayType(string type)
-    {
-        var suffixBuilder = new StringBuilder();
-
-        while (type.EndsWith("]", StringComparison.Ordinal))
-        {
-            var openBracket = type.LastIndexOf('[');
-            if (openBracket < 0)
-            {
-                break;
-            }
-
-            suffixBuilder.Insert(0, type[openBracket..]);
-            type = type[..openBracket];
-        }
-
-        return (type, suffixBuilder.ToString());
-    }
-
-        private static string SanitizeTypeName(string type) =>
-        type
-            .Replace("*", "_ptr", StringComparison.Ordinal)
-            .Replace(" ", "", StringComparison.Ordinal)
-            .Replace("<", "_", StringComparison.Ordinal)
-            .Replace(">", "", StringComparison.Ordinal)
-            .Replace(",", "_", StringComparison.Ordinal);
+    private static string SanitizeTypeName(string type) =>
+        CTypeLowerer.SanitizeTypeName(type);
 
     private static bool TryParseFunctionType(
         string type,
         out IReadOnlyList<string> parameters,
         out string returnType)
-    {
-        parameters = [];
-        returnType = string.Empty;
-
-        if (!type.StartsWith("fn(", StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        var closeParen = type.IndexOf(")->", StringComparison.Ordinal);
-        if (closeParen < 0)
-        {
-            return false;
-        }
-
-        var parametersText = type[3..closeParen];
-        parameters = string.IsNullOrWhiteSpace(parametersText)
-            ? []
-            : parametersText.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        returnType = type[(closeParen + 3)..];
-        return !string.IsNullOrWhiteSpace(returnType);
-    }
+        => CTypeLowerer.TryParseFunctionType(type, out parameters, out returnType);
 
     private static bool ReferencesCompositeType(string type, IReadOnlySet<string> compositeTypeNames)
-    {
-        if (TryParseFunctionType(type, out var parameters, out var returnType))
-        {
-            return parameters.Any(parameter => ReferencesCompositeType(parameter, compositeTypeNames))
-                || ReferencesCompositeType(returnType, compositeTypeNames);
-        }
-
-        var loweredType = LowerType(type).TrimEnd('*');
-        var arrayStart = loweredType.IndexOf('[', StringComparison.Ordinal);
-        if (arrayStart >= 0)
-        {
-            loweredType = loweredType[..arrayStart];
-        }
-
-        return compositeTypeNames.Contains(loweredType);
-    }
+        => CTypeLowerer.ReferencesCompositeType(type, compositeTypeNames, s_typeAdapters);
 
     private static IReadOnlyList<StructNode> OrderStructsByFieldDependencies(IReadOnlyList<StructNode> structs)
     {
