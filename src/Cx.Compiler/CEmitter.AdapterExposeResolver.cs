@@ -36,7 +36,7 @@ public sealed partial class CEmitter
                     : [];
                 var key = $"{current.AdapterName}.{current.ExposedName}";
                 if (!seen.Add(key)
-                    || !context.TryGetAdapterExpose($"{baseOwner}.{current.SourceName}", out var next)
+                    || !TryGetAdapterExpose(baseOwner, current.SourceName, out var next)
                     || next.IsStatic != current.IsStatic)
                 {
                     return new ResolvedAdapterExpose(baseType, baseOwner, current.SourceName, baseArguments);
@@ -46,5 +46,28 @@ public sealed partial class CEmitter
                 currentArguments = baseArguments;
             }
         }
+
+        private bool TryGetAdapterExpose(
+            string adapterName,
+            string exposedName,
+            out AdapterExposeInfo expose)
+        {
+            if (context.TryGetAdapterExpose($"{adapterName}.{exposedName}", out expose!))
+            {
+                return true;
+            }
+
+            var unqualifiedName = UnqualifiedName(adapterName);
+            expose = context.GetInstanceAdapterExposes()
+                .FirstOrDefault(candidate =>
+                    string.Equals(candidate.ExposedName, exposedName, StringComparison.Ordinal)
+                    && string.Equals(UnqualifiedName(candidate.AdapterName), unqualifiedName, StringComparison.Ordinal))!;
+            return expose is not null;
+        }
+
+        private static string UnqualifiedName(string name) =>
+            name.Contains('.', StringComparison.Ordinal)
+                ? name[(name.LastIndexOf('.') + 1)..]
+                : name;
     }
 }

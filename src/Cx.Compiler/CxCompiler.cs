@@ -956,17 +956,17 @@ public sealed class CxCompiler
                 BaseTypeNode = RewriteTypeNode(adapter.BaseTypeNode, QualifyType(adapter.BaseType, alias, typeNames)),
                 Methods = adapter.Methods.Select(method => method with
                 {
-                    OwnerType = QualifyName(alias, method.OwnerType ?? adapter.Name),
+                    OwnerTypeNode = RewriteTypeNode(method.OwnerTypeNode, QualifyName(alias, method.OwnerType ?? adapter.Name)),
                     ReturnTypeNode = RewriteTypeNode(method.ReturnTypeNode, QualifyType(method.ReturnType, alias, typeNames)),
                     Parameters = method.Parameters.Select(parameter => QualifyParameter(parameter, alias, typeNames)).ToList(),
                 }).ToList(),
             }).ToList(),
             Extensions = program.Extensions.Select(extension => extension with
             {
-                TargetType = QualifyName(alias, extension.TargetType),
+                TargetTypeNode = RewriteTypeNode(extension.TargetTypeNode, QualifyName(alias, extension.TargetType)),
                 Methods = extension.Methods.Select(method => method with
                 {
-                    OwnerType = QualifyName(alias, method.OwnerType ?? extension.TargetType),
+                    OwnerTypeNode = RewriteTypeNode(method.OwnerTypeNode, QualifyName(alias, method.OwnerType ?? extension.TargetType)),
                     ReturnTypeNode = RewriteTypeNode(method.ReturnTypeNode, QualifyType(method.ReturnType, alias, typeNames)),
                     Parameters = method.Parameters.Select(parameter => QualifyParameter(parameter, alias, typeNames)).ToList(),
                 }).ToList(),
@@ -1038,7 +1038,7 @@ public sealed class CxCompiler
                     BaseTypeNode = RewriteTypeNode(adapter.BaseTypeNode, ProjectSymbolImportType(adapter.BaseType, symbols, typeNames)),
                     Methods = adapter.Methods.Select(method => method with
                     {
-                        OwnerType = symbols[adapter.Name],
+                        OwnerTypeNode = RewriteTypeNode(method.OwnerTypeNode, symbols[adapter.Name]),
                         ReturnTypeNode = RewriteTypeNode(method.ReturnTypeNode, ProjectSymbolImportType(method.ReturnType, symbols, typeNames)),
                         Parameters = method.Parameters.Select(parameter => RenameParameter(parameter, symbols, typeNames)).ToList(),
                     }).ToList(),
@@ -1048,10 +1048,10 @@ public sealed class CxCompiler
                 .Where(extension => symbols.ContainsKey(extension.TargetType))
                 .Select(extension => extension with
                 {
-                    TargetType = symbols[extension.TargetType],
+                    TargetTypeNode = RewriteTypeNode(extension.TargetTypeNode, symbols[extension.TargetType]),
                     Methods = extension.Methods.Select(method => method with
                     {
-                        OwnerType = symbols[extension.TargetType],
+                        OwnerTypeNode = RewriteTypeNode(method.OwnerTypeNode, symbols[extension.TargetType]),
                         ReturnTypeNode = RewriteTypeNode(method.ReturnTypeNode, ProjectSymbolImportType(method.ReturnType, symbols, typeNames)),
                         Parameters = method.Parameters.Select(parameter => RenameParameter(parameter, symbols, typeNames)).ToList(),
                     }).ToList(),

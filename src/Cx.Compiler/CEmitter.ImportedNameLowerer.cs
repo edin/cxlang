@@ -171,7 +171,7 @@ public sealed partial class CEmitter
         {
             var selfType = ResolveSelfType(function);
             var selfApiType = ResolveSelfApiType(function);
-            var scope = _scope.ForFunction(function, selfType);
+            var scope = _scope.ForFunction(function, selfType, selfApiType);
 
             return new(
                 _context,
@@ -816,6 +816,15 @@ public sealed partial class CEmitter
             expression = LowerNamedStructInitializers(expression);
             expression = LowerNamedInterfaceInitializers(expression);
             expression = _textConstructorLowerer.LowerStructConstructors(expression);
+
+            if (SelfApiType is not null)
+            {
+                var selfApiName = GetGenericBaseName(SelfApiType) ?? SelfApiType;
+                var selfApiArguments = TryParseGenericUse(SelfApiType, out _, out var parsedSelfApiArguments)
+                    ? parsedSelfApiArguments
+                    : [];
+                expression = _textAdapterExposeLowerer.LowerCalls(expression, "self", "self", selfApiName, selfApiArguments);
+            }
 
             foreach (var (variable, type) in _scope.GetVariables())
             {

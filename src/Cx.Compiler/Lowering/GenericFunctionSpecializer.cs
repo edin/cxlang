@@ -19,7 +19,9 @@ internal static class GenericFunctionSpecializer
         var specialized = function with
         {
             TypeParameters = [],
-            TypeArguments = arguments,
+            TypeArgumentNodes = arguments
+                .Select(argument => new TypeNode(function.Location, argument, TypeSyntaxParser.Parse(argument)))
+                .ToList(),
             ReturnTypeNode = SubstituteTypeNode(function.ReturnTypeNode, substitutions, typeSubstitutions, selfType, selfTypeRef),
             Parameters = function.Parameters
                 .Select(parameter => parameter with
@@ -239,7 +241,6 @@ internal static class GenericFunctionSpecializer
             {
                 SourceText = sourceText,
                 Callee = SubstituteExpression(call.Callee, substitutions, typeSubstitutions),
-                TypeArguments = call.TypeArguments.Select(argument => GenericTypeStringRewriter.Substitute(argument, substitutions)).ToList(),
                 TypeArgumentNodes = call.TypeArgumentNodes
                     .Select(typeNode => SubstituteTypeNode(typeNode, substitutions, typeSubstitutions)!)
                     .ToList(),

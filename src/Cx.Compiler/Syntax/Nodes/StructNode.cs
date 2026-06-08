@@ -22,20 +22,23 @@ public sealed record StructFieldNode(
     IReadOnlyList<AttributeApplicationNode> Attributes,
     TypeNode? TypeNode = null) : SyntaxNode(Location)
 {
+    [Obsolete("Use TypeNode instead of the string compatibility property.")]
     public string Type => TypeNode?.TypeName ?? string.Empty;
 }
 
 public sealed record StructRequirementNode(
     Location Location,
     string Name,
-    IReadOnlyList<string> TypeArguments,
     IReadOnlyList<TypeNode> TypeArgumentNodes) : SyntaxNode(Location)
 {
+    [Obsolete("Use TypeArgumentNodes instead of the string compatibility property.")]
+    public IReadOnlyList<string> TypeArguments => TypeArgumentNodes.Select(node => node.TypeName).ToList();
+
     public StructRequirementNode(
         Location Location,
         string Name,
         IReadOnlyList<string> TypeArguments)
-        : this(Location, Name, TypeArguments, [])
+        : this(Location, Name, TypeArguments.Select(type => new TypeNode(Location, type, TypeSyntaxParser.Parse(type))).ToList())
     {
     }
 }

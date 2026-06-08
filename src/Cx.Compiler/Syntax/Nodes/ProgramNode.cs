@@ -253,16 +253,21 @@ public sealed record GlobalVariableNode(
     bool IsMacro = false,
     TypeNode? TypeNode = null) : TopLevelNode(Location)
 {
+    [Obsolete("Use TypeNode instead of the string compatibility property.")]
     public string Type => TypeNode?.TypeName ?? string.Empty;
 }
 
 public sealed record ExtensionNode(
     Location Location,
-    string TargetType,
     IReadOnlyList<string> TypeParameters,
     IReadOnlyList<GenericConstraintNode> GenericConstraints,
     IReadOnlyList<FunctionNode> Methods,
-    IReadOnlyList<AttributeApplicationNode> Attributes) : TopLevelNode(Location);
+    IReadOnlyList<AttributeApplicationNode> Attributes,
+    TypeNode? TargetTypeNode = null) : TopLevelNode(Location)
+{
+    [Obsolete("Use TargetTypeNode instead of the string compatibility property.")]
+    public string TargetType => TargetTypeNode?.TypeName ?? string.Empty;
+}
 
 public sealed record TypeAdapterNode(
     Location Location,
@@ -273,6 +278,7 @@ public sealed record TypeAdapterNode(
     IReadOnlyList<AttributeApplicationNode> Attributes,
     TypeNode? BaseTypeNode = null) : TopLevelNode(Location)
 {
+    [Obsolete("Use BaseTypeNode instead of the string compatibility property.")]
     public string BaseType => BaseTypeNode?.TypeName ?? string.Empty;
 }
 
@@ -283,6 +289,7 @@ public sealed record ExposeMethodNode(
     string ExposedName,
     TypeNode? ReturnTypeNode = null) : SyntaxNode(Location)
 {
+    [Obsolete("Use ReturnTypeNode instead of the string compatibility property.")]
     public string? ReturnType => ReturnTypeNode?.TypeName;
 }
 

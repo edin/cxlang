@@ -94,16 +94,26 @@ public sealed partial class CEmitter
             bool isPointer)
         {
             var resolvedExpose = adapterExposeResolver.Resolve(adapterExpose, receiverArguments);
+            var baseOwner = resolvedExpose.BaseOwner;
+            var typeArguments = resolvedExpose.TypeArguments;
+            var restoredBaseType = genericCallResolver.RestoreSourceGenericType(resolvedExpose.BaseType);
+            if (typeArguments.Count == 0
+                && TryParseGenericUse(restoredBaseType, out var restoredOwner, out var restoredArguments))
+            {
+                baseOwner = restoredOwner;
+                typeArguments = restoredArguments;
+            }
+
             var genericBaseCall = genericCallResolver.FindInferredCall(
-                resolvedExpose.BaseOwner,
+                baseOwner,
                 resolvedExpose.SourceName,
                 arguments,
                 skipSelf: true,
-                preferredTypeArguments: resolvedExpose.TypeArguments)
+                preferredTypeArguments: typeArguments)
                 ?? genericCallResolver.FindExact(
-                    resolvedExpose.BaseOwner,
+                    baseOwner,
                     resolvedExpose.SourceName,
-                    resolvedExpose.TypeArguments);
+                    typeArguments);
             if (genericBaseCall is not null)
             {
                 var loweredArguments = arguments.Select(lowerExpression).ToList();
@@ -113,13 +123,13 @@ public sealed partial class CEmitter
                     loweredArguments);
             }
 
-            var baseMethodKey = $"{resolvedExpose.BaseOwner}.{resolvedExpose.SourceName}";
+            var baseMethodKey = $"{baseOwner}.{resolvedExpose.SourceName}";
             if (context.TryGetMethod(baseMethodKey, out var baseMethod))
             {
                 var loweredArguments = arguments.Select(lowerExpression).ToList();
                 loweredArguments.Insert(0, receiverExpressionBuilder.Build(target, isPointer, takesPointerSelf: true));
                 return new CCallExpression(
-                    new CResolvedFunction(GetFunctionModule(resolvedExpose.BaseOwner, resolvedExpose.SourceName) ?? resolvedExpose.BaseOwner, baseMethod.CName),
+                    new CResolvedFunction(GetFunctionModule(baseOwner, resolvedExpose.SourceName) ?? baseOwner, baseMethod.CName),
                     loweredArguments);
             }
 

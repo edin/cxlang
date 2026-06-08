@@ -25,6 +25,7 @@ public sealed record CastExpressionNode(
     ExpressionNode Expression,
     TypeNode? TargetTypeNode = null) : ExpressionNode(Location, SourceText)
 {
+    [Obsolete("Use TargetTypeNode instead of the string compatibility property.")]
     public string TargetType => TargetTypeNode?.TypeName ?? string.Empty;
 }
 
@@ -46,6 +47,7 @@ public sealed record SizeOfExpressionNode(
     ExpressionNode? ExpressionOperand,
     TypeNode? TypeOperandNode = null) : ExpressionNode(Location, SourceText)
 {
+    [Obsolete("Use TypeOperandNode instead of the string compatibility property.")]
     public string? TypeOperand => TypeOperandNode?.TypeName;
 }
 
@@ -77,6 +79,7 @@ public sealed record InitializerExpressionNode(
     IReadOnlyList<ExpressionNode> Values,
     TypeNode? TypeNameNode = null) : ExpressionNode(Location, SourceText)
 {
+    [Obsolete("Use TypeNameNode instead of the string compatibility property.")]
     public string? TypeName => TypeNameNode?.TypeName;
 }
 
@@ -92,6 +95,7 @@ public sealed record FunctionExpressionNode(
     IReadOnlyList<StatementNode>? BlockBody,
     TypeNode? ReturnTypeNode = null) : ExpressionNode(Location, SourceText)
 {
+    [Obsolete("Use ReturnTypeNode instead of the string compatibility property.")]
     public string? ReturnType => ReturnTypeNode?.TypeName;
 }
 
@@ -112,17 +116,24 @@ public sealed record GenericCallExpressionNode(
     Location Location,
     string SourceText,
     ExpressionNode Callee,
-    IReadOnlyList<string> TypeArguments,
     IReadOnlyList<ExpressionNode> Arguments,
     IReadOnlyList<TypeNode> TypeArgumentNodes) : ExpressionNode(Location, SourceText)
 {
+    [Obsolete("Use TypeArgumentNodes instead of the string compatibility property.")]
+    public IReadOnlyList<string> TypeArguments => TypeArgumentNodes.Select(node => node.TypeName).ToList();
+
     public GenericCallExpressionNode(
         Location Location,
         string SourceText,
         ExpressionNode Callee,
         IReadOnlyList<string> TypeArguments,
         IReadOnlyList<ExpressionNode> Arguments)
-        : this(Location, SourceText, Callee, TypeArguments, Arguments, [])
+        : this(
+            Location,
+            SourceText,
+            Callee,
+            Arguments,
+            TypeArguments.Select(type => new TypeNode(Location, type, TypeSyntaxParser.Parse(type))).ToList())
     {
     }
 }

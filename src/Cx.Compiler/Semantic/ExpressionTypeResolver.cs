@@ -15,7 +15,7 @@ internal sealed class ExpressionTypeResolver(
     private CallResolver? _callResolver;
     private readonly IReadOnlyDictionary<string, string> _typeAliases = program.TypeAliases
         .GroupBy(typeAlias => typeAlias.Name, StringComparer.Ordinal)
-        .ToDictionary(group => group.Key, group => group.First().TargetType, StringComparer.Ordinal);
+        .ToDictionary(group => group.Key, group => TypeText(group.First().TargetTypeNode), StringComparer.Ordinal);
 
     private CallResolver CallResolver => _callResolver ??= new CallResolver(
         program,
@@ -35,7 +35,7 @@ internal sealed class ExpressionTypeResolver(
             LiteralExpressionNode literal => ResolveLiteral(literal.SourceText),
             NameExpressionNode name => ResolveName(name.SourceText, variables),
             ParenthesizedExpressionNode parenthesized => Resolve(parenthesized.Expression, variables),
-            CastExpressionNode cast => cast.TargetType,
+            CastExpressionNode cast => TypeText(cast.TargetTypeNode),
             UnaryExpressionNode unary => ResolveUnary(unary, variables),
             PostfixExpressionNode postfix => Resolve(postfix.Operand, variables),
             SizeOfExpressionNode => "usize",
@@ -81,7 +81,7 @@ internal sealed class ExpressionTypeResolver(
             LiteralExpressionNode literal => ParseResolvedType(ResolveLiteral(literal.SourceText)),
             NameExpressionNode name => ResolveNameTypeRef(name.SourceText, variables),
             ParenthesizedExpressionNode parenthesized => ResolveTypeRef(parenthesized.Expression, variables),
-            CastExpressionNode cast => ResolveTypeNode(cast.TargetTypeNode, cast.TargetType),
+            CastExpressionNode cast => ResolveTypeNode(cast.TargetTypeNode),
             UnaryExpressionNode unary => ResolveUnaryTypeRef(unary, variables),
             PostfixExpressionNode postfix => ResolveTypeRef(postfix.Operand, variables),
             SizeOfExpressionNode => ParseResolvedType("usize"),
@@ -104,12 +104,12 @@ internal sealed class ExpressionTypeResolver(
         }
 
         var function = program.Functions.FirstOrDefault(function =>
-            function.OwnerType is null
+            OwnerType(function) is null
             && function.TypeParameters.Count == 0
             && function.Name == name);
         if (function is not null)
         {
-            return GetFunctionType(function.Parameters, function.ReturnType);
+            return GetFunctionType(function.Parameters, TypeText(function.ReturnTypeNode));
         }
 
         var externFunction = program.ExternFunctions.FirstOrDefault(function =>
@@ -117,7 +117,7 @@ internal sealed class ExpressionTypeResolver(
             && function.TypeParameters.Count == 0);
         return externFunction is null
             ? null
-            : GetFunctionType(externFunction.Parameters, externFunction.ReturnType);
+            : GetFunctionType(externFunction.Parameters, TypeText(externFunction.ReturnTypeNode));
     }
 
     private static string? ResolveLiteral(string text)
@@ -161,10 +161,10 @@ internal sealed class ExpressionTypeResolver(
             ? ParseResolvedType(type)
             : ParseResolvedType(ResolveName(name, variables));
 
-    private TypeRef? ResolveTypeNode(TypeNode? typeNode, string? fallbackType) =>
+    private TypeRef? ResolveTypeNode(TypeNode? typeNode) =>
         typeNode?.Semantic.Type
         ?? (typeNode?.Syntax is null ? null : _typeSyntaxConverter.Convert(typeNode))
-        ?? ParseResolvedType(fallbackType);
+        ?? ParseResolvedType(TypeTextOrNull(typeNode));
 
     private TypeRef? ParseResolvedType(string? type) =>
         string.IsNullOrWhiteSpace(type)
@@ -288,9 +288,9 @@ internal sealed class ExpressionTypeResolver(
 
     private string? ResolveInitializer(InitializerExpressionNode initializer, IReadOnlyDictionary<string, string> variables)
     {
-        if (!string.IsNullOrWhiteSpace(initializer.TypeName))
+        if (initializer.TypeNameNode is not null)
         {
-            return initializer.TypeName;
+            return TypeText(initializer.TypeNameNode);
         }
 
         if (initializer.Values.Count == 0)
@@ -309,9 +309,9 @@ internal sealed class ExpressionTypeResolver(
 
     private TypeRef? ResolveInitializerTypeRef(InitializerExpressionNode initializer, IReadOnlyDictionary<string, string> variables)
     {
-        if (!string.IsNullOrWhiteSpace(initializer.TypeName))
+        if (initializer.TypeNameNode is not null)
         {
-            return ResolveTypeNode(initializer.TypeNameNode, initializer.TypeName);
+            return ResolveTypeNode(initializer.TypeNameNode);
         }
 
         if (initializer.Values.Count == 0)
@@ -330,26 +330,26 @@ internal sealed class ExpressionTypeResolver(
 
     private static string ResolveFunctionExpression(FunctionExpressionNode functionExpression)
     {
-        var returnType = string.IsNullOrWhiteSpace(functionExpression.ReturnType)
+        var returnType = functionExpression.ReturnTypeNode is null
             ? "int"
-            : functionExpression.ReturnType;
+            : TypeText(functionExpression.ReturnTypeNode);
         return GetFunctionType(functionExpression.Parameters, returnType);
     }
 
     private TypeRef ResolveFunctionExpressionTypeRef(FunctionExpressionNode functionExpression)
     {
         var parameters = functionExpression.Parameters
-            .Select(parameter => ResolveTypeNode(parameter.TypeNode, parameter.Type) ?? new TypeRef.Unknown())
+            .Select(parameter => ResolveTypeNode(parameter.TypeNode) ?? new TypeRef.Unknown())
             .ToList();
         var returnType = ResolveTypeNode(
-                functionExpression.ReturnTypeNode,
-                string.IsNullOrWhiteSpace(functionExpression.ReturnType) ? "int" : functionExpression.ReturnType)
+                functionExpression.ReturnTypeNode)
+            ?? (functionExpression.ReturnTypeNode is null ? ParseResolvedType("int") : null)
             ?? new TypeRef.Unknown();
         return new TypeRef.Function(parameters, returnType);
     }
 
     private static string GetFunctionType(IReadOnlyList<ParameterNode> parameters, string returnType) =>
-        $"fn({string.Join(",", parameters.Select(parameter => parameter.Type))})->{returnType}";
+        $"fn({string.Join(",", parameters.Select(parameter => TypeText(parameter.TypeNode)))})->{returnType}";
 
     private string? ResolveMember(MemberExpressionNode member, IReadOnlyDictionary<string, string> variables)
     {
@@ -365,7 +365,7 @@ internal sealed class ExpressionTypeResolver(
             var qualifiedName = GetQualifiedName(member);
             var global = program.GlobalVariables.FirstOrDefault(global =>
                 string.Equals(global.Name, qualifiedName, StringComparison.Ordinal));
-            return global?.Type;
+            return TypeTextOrNull(global?.TypeNode);
         }
 
         var isPointer = targetType.TrimEnd().EndsWith("*", StringComparison.Ordinal);
@@ -375,14 +375,14 @@ internal sealed class ExpressionTypeResolver(
         var field = structNode?.Fields.FirstOrDefault(field => field.Name == member.MemberName);
         if (field is not null)
         {
-            return field.Type;
+            return TypeText(field.TypeNode);
         }
 
         var union = program.TaggedUnions.FirstOrDefault(union => union.Name == normalizedType);
         var variant = union?.Variants.FirstOrDefault(variant => variant.Name == member.MemberName);
         if (variant is not null)
         {
-            return variant.Type;
+            return TypeText(variant.TypeNode);
         }
 
         var interfaceNode = program.Interfaces.FirstOrDefault(interfaceNode => interfaceNode.Name == normalizedType);
@@ -397,8 +397,8 @@ internal sealed class ExpressionTypeResolver(
             if (method is not null)
             {
                 var parameterTypes = new[] { "void*" }
-                    .Concat(method.Parameters.Select(parameter => parameter.Type));
-                return $"fn({string.Join(",", parameterTypes)})->{method.ReturnType}";
+                    .Concat(method.Parameters.Select(parameter => TypeText(parameter.TypeNode)));
+                return $"fn({string.Join(",", parameterTypes)})->{TypeText(method.ReturnTypeNode)}";
             }
         }
 
@@ -415,13 +415,13 @@ internal sealed class ExpressionTypeResolver(
 
         var function = program.Functions.FirstOrDefault(function =>
             function.IsStatic
-            && function.OwnerType is not null
+            && OwnerType(function) is not null
             && function.TypeParameters.Count == 0
-            && targetName == function.OwnerType
+            && targetName == OwnerType(function)
             && function.Name == member.MemberName);
         return function is null
             ? null
-            : GetFunctionType(function.Parameters, function.ReturnType);
+            : GetFunctionType(function.Parameters, TypeText(function.ReturnTypeNode));
     }
 
     private string? ResolveIndex(IndexExpressionNode index, IReadOnlyDictionary<string, string> variables)
@@ -466,7 +466,7 @@ internal sealed class ExpressionTypeResolver(
             : null;
 
     private string? ResolveGenericCall(GenericCallExpressionNode call, IReadOnlyDictionary<string, string> variables) =>
-        CallResolver.Resolve(call.Callee, call.TypeArguments, call.Arguments, variables) is { } resolvedCall
+        CallResolver.Resolve(call.Callee, TypeArguments(call.TypeArgumentNodes), call.Arguments, variables) is { } resolvedCall
             ? TypeRefFormatter.ToCxString(resolvedCall.ReturnType)
             : null;
 
@@ -509,7 +509,7 @@ internal sealed class ExpressionTypeResolver(
                 return null;
             }
 
-            if (!TryBindType(fixedParameters[i].Type, argumentType, typeParameters, bindings))
+            if (!TryBindType(TypeText(fixedParameters[i].TypeNode), argumentType, typeParameters, bindings))
             {
                 return null;
             }
@@ -601,7 +601,7 @@ internal sealed class ExpressionTypeResolver(
                 Fields = definition.Fields
                     .Select(field =>
                     {
-                        var substitutedType = GenericTypeStringRewriter.Substitute(field.Type, substitutions);
+                        var substitutedType = GenericTypeStringRewriter.Substitute(TypeText(field.TypeNode), substitutions);
                         return field with
                         {
                             TypeNode = new TypeNode(
@@ -688,6 +688,16 @@ internal sealed class ExpressionTypeResolver(
     private static bool SameTypeArguments(IReadOnlyList<string> left, IReadOnlyList<string> right) =>
         left.Count == right.Count
         && left.Zip(right).All(pair => string.Equals(pair.First, pair.Second, StringComparison.Ordinal));
+
+    private static string? OwnerType(FunctionNode function) => TypeTextOrNull(function.OwnerTypeNode);
+
+    private static IReadOnlyList<string> TypeArguments(IReadOnlyList<TypeNode> typeArgumentNodes) =>
+        typeArgumentNodes.Select(TypeText).ToList();
+
+    private static string TypeText(TypeNode? typeNode) => typeNode?.TypeName ?? string.Empty;
+
+    private static string? TypeTextOrNull(TypeNode? typeNode) =>
+        string.IsNullOrWhiteSpace(typeNode?.TypeName) ? null : typeNode.TypeName;
 
     private static string? GetQualifiedName(ExpressionNode expression) => expression switch
     {

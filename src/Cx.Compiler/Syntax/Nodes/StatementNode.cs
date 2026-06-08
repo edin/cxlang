@@ -9,6 +9,7 @@ public sealed record LetStatement(
     ExpressionNode? Initializer,
     TypeNode? TypeNode = null) : StatementNode(Location)
 {
+    [Obsolete("Use TypeNode instead of the string compatibility property.")]
     public string Type => TypeNode?.TypeName ?? string.Empty;
 }
 
@@ -53,6 +54,7 @@ public sealed record ForDeclarationInitializerNode(
     ExpressionNode? Initializer,
     TypeNode? TypeNode = null) : ForInitializerNode(Location)
 {
+    [Obsolete("Use TypeNode instead of the string compatibility property.")]
     public string Type => TypeNode?.TypeName ?? string.Empty;
 }
 
@@ -67,6 +69,7 @@ public sealed record ForeachBinding(
     bool IsConst,
     TypeNode? TypeNode = null) : SyntaxNode(Location)
 {
+    [Obsolete("Use TypeNode instead of the string compatibility property.")]
     public string Type => TypeNode?.TypeName ?? string.Empty;
 }
 

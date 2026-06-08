@@ -14,6 +14,7 @@ public sealed record RequirementFieldNode(
     string Name,
     TypeNode? TypeNode = null) : RequirementMemberNode(Location)
 {
+    [Obsolete("Use TypeNode instead of the string compatibility property.")]
     public string Type => TypeNode?.TypeName ?? string.Empty;
 }
 
@@ -24,5 +25,6 @@ public sealed record RequirementFunctionNode(
     IReadOnlyList<ParameterNode> Parameters,
     TypeNode? ReturnTypeNode = null) : RequirementMemberNode(Location)
 {
+    [Obsolete("Use ReturnTypeNode instead of the string compatibility property.")]
     public string ReturnType => ReturnTypeNode?.TypeName ?? string.Empty;
 }

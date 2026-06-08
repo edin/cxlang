@@ -208,6 +208,44 @@ public sealed class CompilerSmokeTests
     }
 
     [Fact]
+    public void CompileToC_LowersChainedAdapterExposedSelfCallsInsideAdapterMethods()
+    {
+        var result = CompilerTestHelpers.Compile(
+            """
+            type u8 = unsigned char;
+
+            struct MiniVec<T> {
+                data: T*;
+
+                fn add(value: T) -> bool {
+                    return true;
+                }
+            }
+
+            type MiniByteBuffer using MiniVec<u8> {
+                expose add as write_u8;
+            }
+
+            type MiniStringBuilder using MiniByteBuffer {
+                expose write_u8;
+
+                fn append_byte(value: u8) -> bool {
+                    return self.write_u8(value);
+                }
+            }
+
+            fn main() -> int {
+                let builder: MiniStringBuilder = MiniStringBuilder {};
+                return builder.append_byte((u8)65) ? 0 : 1;
+            }
+            """);
+
+        CompilerTestHelpers.AssertSuccess(result);
+        Assert.Contains("return MiniVec_add_u8(self, value);", result.Output);
+        Assert.DoesNotContain("self->write_u8", result.Output);
+    }
+
+    [Fact]
     public void CompileToC_LowersStaticAdapterExposedCallsThroughResolvedCallInfo()
     {
         var result = CompilerTestHelpers.Compile(

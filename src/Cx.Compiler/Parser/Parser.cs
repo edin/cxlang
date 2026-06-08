@@ -727,12 +727,12 @@ public sealed class Parser
         {
             var fieldToken = Expect(TokenType.Identifier, "Expected attribute field name.");
             Expect(TokenType.Colon, "Expected ':' after attribute field name.");
-            var type = ParseType();
+            var typeNode = ParseTypeNode();
             Expect(TokenType.Semicolon, "Expected ';' after attribute field.");
 
             if (fieldToken is not null)
             {
-                fields.Add(new AttributeFieldNode(fieldToken.Location, fieldToken.Value, type));
+                fields.Add(new AttributeFieldNode(fieldToken.Location, fieldToken.Value, typeNode));
             }
         }
 
@@ -1061,6 +1061,7 @@ public sealed class Parser
         var extensionToken = Expect(TokenType.Extension, "Expected 'extension'.");
         var targetToken = Expect(TokenType.Identifier, "Expected extension target type.");
         var targetType = targetToken?.Value ?? string.Empty;
+        var targetTypeNode = CreateTypeNode(targetToken?.Location ?? extensionToken?.Location ?? Current.Location, targetType);
         var typeParameters = ParseOptionalTypeParameters();
         var genericConstraints = ParseOptionalGenericConstraints(typeParameters);
         Expect(TokenType.LBrace, "Expected '{' before extension body.");
@@ -1107,11 +1108,11 @@ public sealed class Parser
             ? null
             : new ExtensionNode(
                 extensionToken.Location,
-                targetType,
                 typeParameters,
                 genericConstraints,
                 methods,
-                attributes);
+                attributes,
+                TargetTypeNode: targetTypeNode);
     }
 
     private FunctionNode? ParseStructFunction(
@@ -1318,7 +1319,6 @@ public sealed class Parser
     private StructRequirementNode? ParseRequirementReference()
     {
         var nameToken = Expect(TokenType.Identifier, "Expected requirement name.");
-        var typeArguments = new List<string>();
         var typeArgumentNodes = new List<TypeNode>();
 
         if (ConsumeOptional(TokenType.LessThan))
@@ -1329,7 +1329,6 @@ public sealed class Parser
                 {
                     var typeArgumentNode = ParseTypeNode();
                     typeArgumentNodes.Add(typeArgumentNode);
-                    typeArguments.Add(typeArgumentNode.TypeName);
                 }
                 while (ConsumeOptional(TokenType.Comma));
             }
@@ -1339,7 +1338,7 @@ public sealed class Parser
 
         return nameToken is null
             ? null
-            : new StructRequirementNode(nameToken.Location, nameToken.Value, typeArguments, typeArgumentNodes);
+            : new StructRequirementNode(nameToken.Location, nameToken.Value, typeArgumentNodes);
     }
 
     private IReadOnlyList<string> ParseOptionalTypeParameters()
@@ -2618,7 +2617,6 @@ public sealed class Parser
                 location,
                 text,
                 ParseExpressionText(location, genericOwnerTargetText),
-                ownerTypeArgumentNodes.Select(node => node.TypeName).ToList(),
                 arguments,
                 ownerTypeArgumentNodes);
             return true;
@@ -2631,7 +2629,6 @@ public sealed class Parser
                 location,
                 text,
                 ParseExpressionText(location, genericTargetText),
-                typeArgumentNodes.Select(node => node.TypeName).ToList(),
                 arguments,
                 typeArgumentNodes);
             return true;

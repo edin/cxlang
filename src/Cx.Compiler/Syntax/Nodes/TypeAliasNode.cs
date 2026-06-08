@@ -7,5 +7,6 @@ public sealed record TypeAliasNode(
     bool IsHeaderDeclaration = false,
     TypeNode? TargetTypeNode = null) : TopLevelNode(Location)
 {
+    [Obsolete("Use TargetTypeNode instead of the string compatibility property.")]
     public string TargetType => TargetTypeNode?.TypeName ?? string.Empty;
 }

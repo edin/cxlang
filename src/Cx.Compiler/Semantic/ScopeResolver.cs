@@ -43,7 +43,7 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
     {
         foreach (var typeAlias in program.TypeAliases)
         {
-            DeclareTopLevel(typeAlias.Name, SymbolKind.Type, typeAlias.TargetType, typeAlias.Location, typeAlias);
+            DeclareTopLevel(typeAlias.Name, SymbolKind.Type, TypeText(typeAlias.TargetTypeNode), typeAlias.Location, typeAlias);
         }
 
         foreach (var requirement in program.Requirements)
@@ -78,19 +78,19 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
 
         foreach (var global in program.GlobalVariables)
         {
-            DeclareTopLevel(global.Name, SymbolKind.Global, global.Type, global.Location, global);
+            DeclareTopLevel(global.Name, SymbolKind.Global, TypeText(global.TypeNode), global.Location, global);
         }
 
         foreach (var externFunction in program.ExternFunctions)
         {
-            DeclareTopLevel(externFunction.Name, SymbolKind.Function, externFunction.ReturnType, externFunction.Location, externFunction);
+            DeclareTopLevel(externFunction.Name, SymbolKind.Function, TypeText(externFunction.ReturnTypeNode), externFunction.Location, externFunction);
         }
 
         foreach (var function in _functions)
         {
-            var symbol = new Symbol(function.Name, SymbolKind.Function, function.ReturnType, function.Location, function);
+            var symbol = new Symbol(function.Name, SymbolKind.Function, TypeText(function.ReturnTypeNode), function.Location, function);
             function.Semantic.Symbol = symbol;
-            if (function.OwnerType is null)
+            if (OwnerType(function) is null)
             {
                 model.RootScope.TryDeclare(symbol);
             }
@@ -100,16 +100,17 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
     private void ResolveFunction(FunctionNode function)
     {
         var functionScope = model.RootScope.CreateChild();
+        var ownerType = OwnerType(function);
         if (!function.IsStatic
-            && function.OwnerType is not null
+            && ownerType is not null
             && !function.Parameters.Any(parameter => string.Equals(parameter.Name, "self", StringComparison.Ordinal)))
         {
-            Declare(functionScope, "self", SymbolKind.Parameter, function.OwnerType + "*", function.Location);
+            Declare(functionScope, "self", SymbolKind.Parameter, ownerType + "*", function.Location);
         }
 
         foreach (var parameter in function.Parameters.Where(parameter => !parameter.IsVariadic))
         {
-            Declare(functionScope, parameter.Name, SymbolKind.Parameter, parameter.Type, parameter.Location, parameter);
+            Declare(functionScope, parameter.Name, SymbolKind.Parameter, TypeText(parameter.TypeNode), parameter.Location, parameter);
         }
 
         ResolveStatements(function.Body, functionScope);
@@ -129,7 +130,7 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
         {
             case LetStatement let:
                 ResolveExpression(let.Initializer, scope);
-                Declare(scope, let.Name, SymbolKind.Local, let.Type, let.Location, let);
+                Declare(scope, let.Name, SymbolKind.Local, TypeTextOrNull(let.TypeNode), let.Location, let);
                 break;
 
             case ReturnStatement ret:
@@ -210,7 +211,7 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
         {
             case ForDeclarationInitializerNode declaration:
                 ResolveExpression(declaration.Initializer, scope);
-                Declare(scope, declaration.Name, SymbolKind.Local, declaration.Type, declaration.Location, declaration);
+                Declare(scope, declaration.Name, SymbolKind.Local, TypeText(declaration.TypeNode), declaration.Location, declaration);
                 break;
             case ForExpressionInitializerNode expression:
                 ResolveExpression(expression.Expression, scope);
@@ -225,7 +226,7 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
             return;
         }
 
-        Declare(scope, binding.Name, SymbolKind.ForeachBinding, binding.Type, binding.Location, binding);
+        Declare(scope, binding.Name, SymbolKind.ForeachBinding, TypeTextOrNull(binding.TypeNode), binding.Location, binding);
     }
 
     private void ResolveExpression(ExpressionNode? expression, Scope scope)
@@ -285,7 +286,7 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
                 var functionScope = scope.CreateChild();
                 foreach (var parameter in function.Parameters.Where(parameter => !parameter.IsVariadic))
                 {
-                    Declare(functionScope, parameter.Name, SymbolKind.Parameter, parameter.Type, parameter.Location, parameter);
+                    Declare(functionScope, parameter.Name, SymbolKind.Parameter, TypeText(parameter.TypeNode), parameter.Location, parameter);
                 }
 
                 ResolveExpression(function.ExpressionBody, functionScope);
@@ -388,23 +389,24 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
 
     private void BindGenericCall(GenericCallExpressionNode call, Scope scope)
     {
-        if (TryBindResolvedCall(call, call.Callee, call.TypeArguments, call.Arguments, scope))
+        var typeArguments = TypeArguments(call.TypeArgumentNodes);
+        if (TryBindResolvedCall(call, call.Callee, typeArguments, call.Arguments, scope))
         {
             return;
         }
 
         if (call.Callee is NameExpressionNode name
-            && FindFreeFunction(name.SourceText, call.TypeArguments) is { } function)
+            && FindFreeFunction(name.SourceText, typeArguments) is { } function)
         {
             var symbol = FunctionSymbol(function);
             call.Semantic.Symbol = symbol;
-            call.Semantic.ResolvedCall = new ResolvedCallInfo(function, call.TypeArguments, IsInstance: false);
+            call.Semantic.ResolvedCall = new ResolvedCallInfo(function, typeArguments, IsInstance: false);
             name.Semantic.Symbol = symbol;
             return;
         }
 
         if (call.Callee is MemberExpressionNode member
-            && ResolveMemberFunction(member, scope, call.TypeArguments) is { } resolved)
+            && ResolveMemberFunction(member, scope, typeArguments) is { } resolved)
         {
             var functionSymbol = FunctionSymbol(resolved.Function);
             call.Semantic.Symbol = functionSymbol;
@@ -520,21 +522,21 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
 
     private FunctionNode? FindFreeFunction(string name, IReadOnlyList<string> typeArguments) =>
         _functions.FirstOrDefault(function =>
-            function.OwnerType is null
+            OwnerType(function) is null
             && string.Equals(function.Name, name, StringComparison.Ordinal)
             && MatchesTypeArguments(function, typeArguments));
 
     private FunctionNode? FindStaticFunction(string ownerType, string name, IReadOnlyList<string> typeArguments) =>
         _functions.FirstOrDefault(function =>
             function.IsStatic
-            && function.OwnerType is not null
-            && string.Equals(function.OwnerType, ownerType, StringComparison.Ordinal)
+            && OwnerType(function) is not null
+            && string.Equals(OwnerType(function), ownerType, StringComparison.Ordinal)
             && string.Equals(function.Name, name, StringComparison.Ordinal)
             && MatchesTypeArguments(function, typeArguments));
 
     private FunctionNode? FindModuleFunction(string moduleName, string name, IReadOnlyList<string> typeArguments) =>
         _functions.FirstOrDefault(function =>
-            function.OwnerType is null
+            OwnerType(function) is null
             && string.Equals(function.Semantic.ModuleName, moduleName, StringComparison.Ordinal)
             && string.Equals(function.Name, name, StringComparison.Ordinal)
             && MatchesTypeArguments(function, typeArguments));
@@ -544,8 +546,8 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
         var ownerType = GetGenericBaseName(StripPointer(receiverType));
         return _functions.FirstOrDefault(function =>
             !function.IsStatic
-            && function.OwnerType is not null
-            && string.Equals(function.OwnerType, ownerType, StringComparison.Ordinal)
+            && OwnerType(function) is not null
+            && string.Equals(OwnerType(function), ownerType, StringComparison.Ordinal)
             && string.Equals(function.Name, name, StringComparison.Ordinal)
             && MatchesTypeArguments(function, typeArguments, receiverType));
     }
@@ -599,7 +601,7 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
             return symbol;
         }
 
-        symbol = new Symbol(function.Name, SymbolKind.Function, function.ReturnType, function.Location, function);
+        symbol = new Symbol(function.Name, SymbolKind.Function, TypeText(function.ReturnTypeNode), function.Location, function);
         function.Semantic.Symbol = symbol;
         return symbol;
     }
@@ -615,6 +617,19 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
         FunctionNode Function,
         IReadOnlyList<string> TypeArguments,
         bool IsInstance);
+
+    private static string? OwnerType(FunctionNode function) => TypeTextOrNull(function.OwnerTypeNode);
+
+    private static IReadOnlyList<string> TypeArguments(IReadOnlyList<TypeNode> nodes) =>
+        nodes.Select(TypeText).ToList();
+
+    private static string TypeText(TypeNode? typeNode) => typeNode?.TypeName ?? string.Empty;
+
+    private static string? TypeTextOrNull(TypeNode? typeNode)
+    {
+        var type = TypeText(typeNode);
+        return string.IsNullOrWhiteSpace(type) ? null : type;
+    }
 
     private static string StripPointer(string type)
     {

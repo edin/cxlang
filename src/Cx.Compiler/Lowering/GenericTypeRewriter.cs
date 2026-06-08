@@ -67,7 +67,7 @@ internal static class GenericTypeRewriter
             Extensions = program.Extensions
                 .Select(extension => extension with
                 {
-                    TargetType = RewriteConcreteGenericStructTypes(extension.TargetType, concreteStructNames),
+                    TargetTypeNode = RewriteTypeNode(extension.TargetTypeNode, concreteStructNames),
                     Methods = extension.Methods
                         .Select(method => Rewrite(method, concreteStructNames))
                         .ToList(),
@@ -132,9 +132,10 @@ internal static class GenericTypeRewriter
     {
         var rewritten = function with
         {
-            OwnerType = function.OwnerType is null
-                ? null
-                : RewriteConcreteGenericStructTypes(function.OwnerType, concreteStructNames),
+            OwnerTypeNode = RewriteTypeNode(function.OwnerTypeNode, concreteStructNames),
+            TypeArgumentNodes = function.TypeArgumentNodes?
+                .Select(typeNode => RewriteTypeNode(typeNode, concreteStructNames)!)
+                .ToList(),
             GenericConstraints = RewriteGenericConstraints(function.GenericConstraints, concreteStructNames),
             ReturnTypeNode = RewriteTypeNode(function.ReturnTypeNode, concreteStructNames),
             Parameters = RewriteParameters(function.Parameters, concreteStructNames),
@@ -225,9 +226,6 @@ internal static class GenericTypeRewriter
         requirements
             .Select(requirement => requirement with
             {
-                TypeArguments = requirement.TypeArguments
-                    .Select(argument => RewriteConcreteGenericStructTypes(argument, concreteStructNames))
-                    .ToList(),
                 TypeArgumentNodes = requirement.TypeArgumentNodes
                     .Select(typeNode => RewriteTypeNode(typeNode, concreteStructNames)!)
                     .ToList(),
@@ -464,9 +462,6 @@ internal static class GenericTypeRewriter
             GenericCallExpressionNode call => call with
             {
                 Callee = RewriteExpression(call.Callee, concreteStructNames),
-                TypeArguments = call.TypeArguments
-                    .Select(argument => RewriteConcreteGenericStructTypes(argument, concreteStructNames))
-                    .ToList(),
                 TypeArgumentNodes = call.TypeArgumentNodes
                     .Select(typeNode => RewriteTypeNode(typeNode, concreteStructNames)!)
                     .ToList(),

@@ -135,9 +135,6 @@ internal static class GenericStructSpecializer
         var requirements = definition.Requirements
             .Select(requirement => CopySemantic(requirement, requirement with
             {
-                TypeArguments = requirement.TypeArguments
-                    .Select(argument => GenericTypeStringRewriter.Substitute(argument, substitutions))
-                    .ToList(),
                 TypeArgumentNodes = requirement.TypeArgumentNodes
                     .Select(typeNode => SubstituteTypeNode(typeNode, substitutions, typeSubstitutions)!)
                     .ToList(),

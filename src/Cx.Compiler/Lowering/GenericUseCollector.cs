@@ -44,11 +44,12 @@ internal sealed class GenericUseCollector(ProgramNode program)
     {
         var selfType = ResolveSelfType(function);
         var selfApiType = ResolveSelfApiType(function);
+        var scopeSelfType = selfApiType ?? selfType;
         var variables = function.Parameters
             .Where(parameter => !parameter.IsVariadic)
-            .Select(parameter => (parameter.Name, Type: GenericTypeStringRewriter.SubstituteSelf(parameter.Type, selfType)))
+            .Select(parameter => (parameter.Name, Type: GenericTypeStringRewriter.SubstituteSelf(parameter.Type, scopeSelfType)))
             .Concat(CollectLocalVariables(function.Body)
-                .Select(local => (local.Name, Type: GenericTypeStringRewriter.SubstituteSelf(local.Type, selfType))))
+                .Select(local => (local.Name, Type: GenericTypeStringRewriter.SubstituteSelf(local.Type, scopeSelfType))))
             .Where(item => !string.IsNullOrWhiteSpace(item.Name) && !string.IsNullOrWhiteSpace(item.Type))
             .GroupBy(item => item.Name, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Last().Type, StringComparer.Ordinal);

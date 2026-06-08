@@ -10,5 +10,6 @@ public sealed record ExternFunctionNode(
     bool IsMacro = false,
     TypeNode? ReturnTypeNode = null) : TopLevelNode(Location)
 {
+    [Obsolete("Use ReturnTypeNode instead of the string compatibility property.")]
     public string ReturnType => ReturnTypeNode?.TypeName ?? string.Empty;
 }

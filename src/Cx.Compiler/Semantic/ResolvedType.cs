@@ -36,11 +36,49 @@ internal sealed record ResolvedField(
     TypeRef Type,
     StructFieldNode Declaration);
 
+internal enum ResolvedMethodKind
+{
+    Direct,
+    Exposed,
+}
+
+internal abstract record ResolvedMethodTarget
+{
+    public abstract FunctionNode Function { get; }
+
+    public sealed record Direct(FunctionNode DirectFunction) : ResolvedMethodTarget
+    {
+        public override FunctionNode Function => DirectFunction;
+    }
+
+    public sealed record Exposed(
+        TypeAdapterNode Adapter,
+        ExposeMethodNode Expose,
+        ResolvedMethod InnerMethod) : ResolvedMethodTarget
+    {
+        public override FunctionNode Function => InnerMethod.Declaration;
+    }
+}
+
 internal sealed record ResolvedMethod(
     string Name,
+    TypeRef OwnerType,
     TypeRef ReturnType,
     IReadOnlyList<TypeRef> ParameterTypes,
-    FunctionNode Declaration);
+    ResolvedMethodTarget Target)
+{
+    public FunctionNode Declaration => Target.Function;
+
+    public ResolvedMethod DirectMethod =>
+        Target is ResolvedMethodTarget.Exposed exposed
+            ? exposed.InnerMethod.DirectMethod
+            : this;
+
+    public ResolvedMethodKind Kind =>
+        Target is ResolvedMethodTarget.Exposed
+            ? ResolvedMethodKind.Exposed
+            : ResolvedMethodKind.Direct;
+}
 
 internal sealed class ResolvedTypeMemberResolver(ProgramNode program)
 {
@@ -91,7 +129,7 @@ internal sealed class ResolvedTypeMemberResolver(ProgramNode program)
                 function.OwnerType is not null
                 && string.Equals(function.OwnerType, declaration.Name, StringComparison.Ordinal)));
         return methods
-            .Select(method => ResolveMethod(method, type.Substitutions))
+            .Select(method => ResolveMethod(method, type.Type, type.Substitutions))
             .ToList();
     }
 
@@ -107,7 +145,7 @@ internal sealed class ResolvedTypeMemberResolver(ProgramNode program)
             .Where(function =>
                 function.OwnerType is not null
                 && string.Equals(function.OwnerType, ownerName, StringComparison.Ordinal))
-            .Select(method => ResolveMethod(method, type.Substitutions))
+            .Select(method => ResolveMethod(method, type.Type, type.Substitutions))
             .ToList();
     }
 
@@ -116,7 +154,7 @@ internal sealed class ResolvedTypeMemberResolver(ProgramNode program)
         ResolvedType type)
     {
         var ownMethods = declaration.Methods
-            .Select(method => ResolveMethod(method, type.Substitutions))
+            .Select(method => ResolveMethod(method, type.Type, type.Substitutions))
             .ToList();
         var exposedMethods = ResolveAdapterExposedMethods(declaration, type);
         return ownMethods.Concat(exposedMethods).ToList();
@@ -155,9 +193,10 @@ internal sealed class ResolvedTypeMemberResolver(ProgramNode program)
 
             exposed.Add(new ResolvedMethod(
                 expose.ExposedName,
+                type.Type,
                 returnType,
                 parameterTypes,
-                baseMethod.Declaration));
+                new ResolvedMethodTarget.Exposed(declaration, expose, baseMethod)));
         }
 
         return exposed;
@@ -165,6 +204,7 @@ internal sealed class ResolvedTypeMemberResolver(ProgramNode program)
 
     private ResolvedMethod ResolveMethod(
         FunctionNode method,
+        TypeRef ownerType,
         IReadOnlyDictionary<string, TypeRef> substitutions)
     {
         var returnType = method.ReturnTypeNode?.Semantic.Type ?? _parser.Parse(method.ReturnType);
@@ -175,9 +215,10 @@ internal sealed class ResolvedTypeMemberResolver(ProgramNode program)
             .ToList();
         return new ResolvedMethod(
             method.Name,
+            ownerType,
             TypeRefRewriter.Substitute(returnType, substitutions),
             parameterTypes,
-            method);
+            new ResolvedMethodTarget.Direct(method));
     }
 
     private bool ExtensionConstraintsSatisfied(

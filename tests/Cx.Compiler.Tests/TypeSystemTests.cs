@@ -269,6 +269,55 @@ public sealed class TypeSystemTests
         Assert.Equal("bool", TypeRefFormatter.ToCxString(method.ReturnType));
         Assert.Equal("Stack<int>*", TypeRefFormatter.ToCxString(method.ParameterTypes[0]));
         Assert.Equal("int", TypeRefFormatter.ToCxString(method.ParameterTypes[1]));
+        Assert.Equal(ResolvedMethodKind.Exposed, method.Kind);
+        var target = Assert.IsType<ResolvedMethodTarget.Exposed>(method.Target);
+        Assert.Equal("Stack", target.Adapter.Name);
+        Assert.Equal("push", target.Expose.ExposedName);
+        Assert.Equal("add", target.InnerMethod.Name);
+        Assert.IsType<ResolvedMethodTarget.Direct>(target.InnerMethod.Target);
+    }
+
+    [Fact]
+    public void FindMethod_ReturnsChainedAdapterExposedTarget()
+    {
+        var program = ResolveTypes(
+            """
+            struct Vec<T> {
+                value: T;
+            }
+
+            extension Vec<T> {
+                fn add(value: T) -> bool {
+                    self.value = value;
+                    return true;
+                }
+            }
+
+            type ByteBuffer using Vec<u8> {
+                expose add as write_u8;
+            }
+
+            type StringBuilder using ByteBuffer {
+                expose write_u8;
+            }
+            """);
+        var typeSystem = new TypeSystem(program);
+
+        var method = typeSystem.FindMethod("StringBuilder", "write_u8", isStatic: false, argumentCount: 1);
+
+        Assert.NotNull(method);
+        Assert.Equal("bool", TypeRefFormatter.ToCxString(method.ReturnType));
+        var stringBuilderTarget = Assert.IsType<ResolvedMethodTarget.Exposed>(method.Target);
+        Assert.Equal("StringBuilder", stringBuilderTarget.Adapter.Name);
+        var byteBufferMethod = stringBuilderTarget.InnerMethod;
+        Assert.Equal("write_u8", byteBufferMethod.Name);
+        var byteBufferTarget = Assert.IsType<ResolvedMethodTarget.Exposed>(byteBufferMethod.Target);
+        Assert.Equal("ByteBuffer", byteBufferTarget.Adapter.Name);
+        Assert.Equal("add", byteBufferTarget.InnerMethod.Name);
+        Assert.Equal("u8", TypeRefFormatter.ToCxString(byteBufferTarget.InnerMethod.ParameterTypes[1]));
+        Assert.IsType<ResolvedMethodTarget.Direct>(byteBufferTarget.InnerMethod.Target);
+        Assert.Equal("add", method.DirectMethod.Name);
+        Assert.Equal("Vec<u8>", TypeRefFormatter.ToCxString(method.DirectMethod.OwnerType));
     }
 
     [Fact]

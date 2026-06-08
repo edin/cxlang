@@ -28,15 +28,16 @@ internal sealed class CLoweringScope(
             variableTypes,
             new Dictionary<string, ImplicitReferenceLocal>(StringComparer.Ordinal));
 
-    public CLoweringScope ForFunction(FunctionNode function, string? selfType)
+    public CLoweringScope ForFunction(FunctionNode function, string? selfType, string? selfApiType = null)
     {
+        var scopeSelfType = selfApiType ?? selfType;
         var variables = Variables.ToDictionary(StringComparer.Ordinal);
         var variableTypes = VariableTypes.ToDictionary(StringComparer.Ordinal);
         foreach (var variable in function.Parameters
             .Where(parameter => !parameter.IsVariadic)
-            .Select(parameter => (parameter.Name, Type: SubstituteSelfType(parameter.Type, selfType)))
+            .Select(parameter => (parameter.Name, Type: SubstituteSelfType(parameter.Type, scopeSelfType)))
             .Concat(CollectLocalVariables(function.Body)
-                .Select(statement => (statement.Name, Type: SubstituteSelfType(statement.Type, selfType))))
+                .Select(statement => (statement.Name, Type: SubstituteSelfType(statement.Type, scopeSelfType))))
             .Where(item => !string.IsNullOrWhiteSpace(item.Name) && !string.IsNullOrWhiteSpace(item.Type))
             .GroupBy(item => item.Name, StringComparer.Ordinal)
             .Select(group => (group.Key, Type: group.First().Type)))
@@ -46,10 +47,10 @@ internal sealed class CLoweringScope(
 
         foreach (var variable in function.Parameters
             .Where(parameter => !parameter.IsVariadic && parameter.TypeNode?.Semantic.Type is not null)
-            .Select(parameter => (parameter.Name, Type: SubstituteSelf(parameter.TypeNode!.Semantic.Type!, selfType)))
+            .Select(parameter => (parameter.Name, Type: SubstituteSelf(parameter.TypeNode!.Semantic.Type!, scopeSelfType)))
             .Concat(CollectLocalVariableTypes(function.Body)
                 .Where(local => local.TypeRef is not null)
-                .Select(local => (local.Name, Type: SubstituteSelf(local.TypeRef!, selfType))))
+                .Select(local => (local.Name, Type: SubstituteSelf(local.TypeRef!, scopeSelfType))))
             .Where(item => !string.IsNullOrWhiteSpace(item.Name))
             .GroupBy(item => item.Name, StringComparer.Ordinal)
             .Select(group => (group.Key, Type: group.First().Type)))

@@ -9,7 +9,19 @@ public sealed record AttributeDeclarationNode(
 public sealed record AttributeFieldNode(
     Location Location,
     string Name,
-    string Type) : SyntaxNode(Location);
+    TypeNode? TypeNode = null) : SyntaxNode(Location)
+{
+    public AttributeFieldNode(
+        Location Location,
+        string Name,
+        string Type)
+        : this(Location, Name, new TypeNode(Location, Type, TypeSyntaxParser.Parse(Type)))
+    {
+    }
+
+    [Obsolete("Use TypeNode instead of the string compatibility property.")]
+    public string Type => TypeNode?.TypeName ?? string.Empty;
+}
 
 public sealed record AttributeApplicationNode(
     Location Location,

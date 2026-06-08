@@ -42,30 +42,31 @@ public sealed class SemanticAnalyzer(
             AnalyzeGenericConstraints(structNode.TypeParameters, structNode.GenericConstraints, structNode.Location);
             foreach (var field in structNode.Fields)
             {
-                AnalyzeType(field.Type, field.Location, program, structNode.TypeParameters);
+                AnalyzeType(field.TypeNode, field.Location, program, structNode.TypeParameters);
             }
 
             AnalyzeStructRequirements(structNode);
         }
 
         var globalVariables = program.GlobalVariables
-            .Select(global => (global.Name, global.Type))
+            .Select(global => (global.Name, Type: TypeText(global.TypeNode)))
             .GroupBy(item => item.Name, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Last().Type, StringComparer.Ordinal);
         var returnFlow = new ReturnFlowAnalyzer(program, _expressionTypeResolver);
         var definiteAssignment = new DefiniteAssignmentAnalyzer(diagnostics, program, _expressionTypeResolver, returnFlow);
         foreach (var global in program.GlobalVariables)
         {
-            AnalyzeType(global.Type, global.Location, program, []);
+            var globalType = TypeText(global.TypeNode);
+            AnalyzeType(global.TypeNode, global.Location, program, []);
             AnalyzeExpression(global.Initializer, global.Location, globalVariables);
-            if (global.Initializer is not null && IsBareNull(global.Initializer) && !IsNullableType(ParseTypeRef(global.Type)))
+            if (global.Initializer is not null && IsBareNull(global.Initializer) && !IsNullableType(ParseTypeRef(globalType)))
             {
-                diagnostics.Report(global.Location, $"Cannot assign null to non-pointer global '{global.Name}' of type '{global.Type}'.");
+                diagnostics.Report(global.Location, $"Cannot assign null to non-pointer global '{global.Name}' of type '{globalType}'.");
             }
 
             CheckAssignmentCompatibility(
                 global.Location,
-                global.Type,
+                globalType,
                 global.Initializer,
                 globalVariables,
                 $"global '{global.Name}'");
@@ -75,11 +76,11 @@ public sealed class SemanticAnalyzer(
         {
             var effectiveGenericConstraints = GetEffectiveGenericConstraints(program, function);
             AnalyzeGenericConstraints(function.TypeParameters, effectiveGenericConstraints, function.Location);
-            AnalyzeType(function.ReturnType, function.Location, program, function.TypeParameters);
+            AnalyzeType(function.ReturnTypeNode, function.Location, program, function.TypeParameters);
             var variables = new Dictionary<string, string>(globalVariables, StringComparer.Ordinal);
             foreach (var parameter in function.Parameters.Where(parameter => !parameter.IsVariadic))
             {
-                variables[parameter.Name] = parameter.Type;
+                variables[parameter.Name] = TypeText(parameter.TypeNode);
             }
             var locals = CollectLocalVariables(function.Body).ToList();
             foreach (var local in locals)
@@ -88,7 +89,7 @@ public sealed class SemanticAnalyzer(
             }
             foreach (var parameter in function.Parameters.Where(parameter => !parameter.IsVariadic))
             {
-                AnalyzeType(parameter.Type, parameter.Location, program, function.TypeParameters);
+                AnalyzeType(parameter.TypeNode, parameter.Location, program, function.TypeParameters);
             }
 
             var mutability = variables.Keys.ToDictionary(name => name, _ => LocalMutability.Mutable, StringComparer.Ordinal);
@@ -108,7 +109,7 @@ public sealed class SemanticAnalyzer(
             _currentGenericConstraints = effectiveGenericConstraints;
             _expressionTypeResolver = new ExpressionTypeResolver(program, _currentTypeParameters, _currentGenericConstraints);
 
-            var functionReturnType = function.ReturnTypeNode?.Semantic.Type ?? ParseTypeRef(function.ReturnType);
+            var functionReturnType = function.ReturnTypeNode?.Semantic.Type ?? ParseTypeRef(TypeText(function.ReturnTypeNode));
             AnalyzeStatements(function.Body, functionReturnType, variables, mutability, program, function.TypeParameters);
 
             _currentTypeParameters = previousTypeParameters;
@@ -143,7 +144,7 @@ public sealed class SemanticAnalyzer(
         {
             foreach (var field in declaration.Fields)
             {
-                AnalyzeType(field.Type, field.Location, program, []);
+                AnalyzeType(field.TypeNode, field.Location, program, []);
             }
         }
 
@@ -276,10 +277,11 @@ public sealed class SemanticAnalyzer(
         FunctionNode function)
     {
         var constraints = new List<GenericConstraintNode>();
-        if (function.OwnerType is not null)
+        var ownerType = OwnerType(function);
+        if (ownerType is not null)
         {
             var owner = program.Structs.FirstOrDefault(structNode =>
-                string.Equals(structNode.Name, function.OwnerType, StringComparison.Ordinal));
+                string.Equals(structNode.Name, ownerType, StringComparison.Ordinal));
             if (owner is not null)
             {
                 constraints.AddRange(owner.GenericConstraints);
@@ -326,8 +328,8 @@ public sealed class SemanticAnalyzer(
         {
             AnalyzeRequirementReference(requirement, allowInferredTypeArguments: true);
             var selfType = GetStructSelfType(structNode);
-            var arguments = requirement.TypeArguments.Count > 0
-                ? requirement.TypeArguments
+            var arguments = TypeArguments(requirement.TypeArgumentNodes).Count > 0
+                ? TypeArguments(requirement.TypeArgumentNodes)
                 : structNode.TypeParameters;
             var match = _requirementMatcher?.Match(selfType, requirement.Name, arguments);
             if (match is null || match.Success)
@@ -354,15 +356,16 @@ public sealed class SemanticAnalyzer(
             string.Equals(requirement.Name, reference.Name, StringComparison.Ordinal));
         if (requirement is not null)
         {
-            if (reference.TypeArguments.Count > 0
-                && reference.TypeArguments.Count != requirement.TypeParameters.Count)
+            var typeArguments = TypeArguments(reference.TypeArgumentNodes);
+            if (typeArguments.Count > 0
+                && typeArguments.Count != requirement.TypeParameters.Count)
             {
                 diagnostics.Report(
                     reference.Location,
-                    $"Requirement '{reference.Name}' expects {requirement.TypeParameters.Count} type argument(s), but {reference.TypeArguments.Count} were provided.");
+                    $"Requirement '{reference.Name}' expects {requirement.TypeParameters.Count} type argument(s), but {typeArguments.Count} were provided.");
             }
             else if (!allowInferredTypeArguments
-                && reference.TypeArguments.Count == 0
+                && typeArguments.Count == 0
                 && requirement.TypeParameters.Count > 0)
             {
                 diagnostics.Report(
@@ -377,7 +380,7 @@ public sealed class SemanticAnalyzer(
             string.Equals(interfaceNode.Name, reference.Name, StringComparison.Ordinal));
         if (interfaceNode is not null)
         {
-            if (reference.TypeArguments.Count > 0)
+            if (TypeArguments(reference.TypeArgumentNodes).Count > 0)
             {
                 diagnostics.Report(
                     reference.Location,
@@ -420,15 +423,16 @@ public sealed class SemanticAnalyzer(
         switch (statement)
         {
             case LetStatement let:
-                AnalyzeType(let.Type, let.Location, program, inScopeTypeParameters);
+                var letType = TypeText(let.TypeNode);
+                AnalyzeType(let.TypeNode, let.Location, program, inScopeTypeParameters);
                 AnalyzeExpression(let.Initializer, let.Location, variables, mutability);
-                if (let.Initializer is not null && IsBareNull(let.Initializer) && !IsNullableType(ParseTypeRef(let.Type)))
+                if (let.Initializer is not null && IsBareNull(let.Initializer) && !IsNullableType(ParseTypeRef(letType)))
                 {
-                    diagnostics.Report(let.Location, $"Cannot assign null to non-pointer type '{let.Type}'.");
+                    diagnostics.Report(let.Location, $"Cannot assign null to non-pointer type '{letType}'.");
                 }
 
-                CheckAssignmentCompatibility(let.Location, let.Type, let.Initializer, variables, $"local '{let.Name}'");
-                variables[let.Name] = let.Type;
+                CheckAssignmentCompatibility(let.Location, letType, let.Initializer, variables, $"local '{let.Name}'");
+                variables[let.Name] = letType;
                 mutability[let.Name] = let.IsConst ? LocalMutability.Const : LocalMutability.Mutable;
                 break;
 
@@ -546,9 +550,10 @@ public sealed class SemanticAnalyzer(
                     {
                         if (keyValueKeyType is not null)
                         {
-                            foreachVariables[foreachStatement.KeyBinding.Name] = string.IsNullOrWhiteSpace(foreachStatement.KeyBinding.Type)
+                            var keyBindingType = TypeTextOrNull(foreachStatement.KeyBinding.TypeNode);
+                            foreachVariables[foreachStatement.KeyBinding.Name] = keyBindingType is null
                                 ? keyValueKeyType
-                                : foreachStatement.KeyBinding.Type;
+                                : keyBindingType;
                             foreachMutability[foreachStatement.KeyBinding.Name] = LocalMutability.ForeachKey;
                         }
 
@@ -642,12 +647,12 @@ public sealed class SemanticAnalyzer(
                     var armMutability = new Dictionary<string, LocalMutability>(mutability, StringComparer.Ordinal);
                     if (matchedTaggedUnion is not null
                         && arm.BindingName is not null
-                        && arm.Pattern != "_"
-                        && matchedTaggedUnion.Variants.FirstOrDefault(variant => variant.Name == arm.Pattern) is { } variant)
-                    {
-                        armVariables[arm.BindingName] = variant.Type;
-                        armMutability[arm.BindingName] = LocalMutability.Mutable;
-                    }
+                    && arm.Pattern != "_"
+                    && matchedTaggedUnion.Variants.FirstOrDefault(variant => variant.Name == arm.Pattern) is { } variant)
+                {
+                    armVariables[arm.BindingName] = TypeText(variant.TypeNode);
+                    armMutability[arm.BindingName] = LocalMutability.Mutable;
+                }
                     else if (matchedInterface is not null
                         && arm.BindingName is not null
                         && arm.Pattern != "_"
@@ -803,19 +808,21 @@ public sealed class SemanticAnalyzer(
     {
         if (foreachStatement.IndexBinding is { } indexBinding)
         {
-            var indexType = string.IsNullOrWhiteSpace(indexBinding.Type)
+            var declaredIndexType = TypeTextOrNull(indexBinding.TypeNode);
+            var indexType = declaredIndexType is null
                 ? "usize"
-                : indexBinding.Type;
+                : declaredIndexType;
             variables[indexBinding.Name] = indexType;
             mutability[indexBinding.Name] = LocalMutability.ForeachIndex;
         }
 
-        var declaredElementType = string.IsNullOrWhiteSpace(foreachStatement.ValueBinding.Type)
+        var valueBindingType = TypeTextOrNull(foreachStatement.ValueBinding.TypeNode);
+        var declaredElementType = valueBindingType is null
             ? elementType
-            : foreachStatement.ValueBinding.Type;
-        if (!string.IsNullOrWhiteSpace(foreachStatement.ValueBinding.Type)
+            : valueBindingType;
+        if (valueBindingType is not null
             && _typeCompatibility is not null
-            && !_typeCompatibility.CanAssign(foreachStatement.ValueBinding.Type, elementType, out var reason))
+            && !_typeCompatibility.CanAssign(valueBindingType, elementType, out var reason))
         {
             diagnostics.Report(
                 foreachStatement.ValueBinding.Location,
@@ -836,15 +843,17 @@ public sealed class SemanticAnalyzer(
     {
         if (foreachStatement.IndexBinding is { } indexBinding)
         {
-            variables[indexBinding.Name] = string.IsNullOrWhiteSpace(indexBinding.Type)
+            var declaredIndexType = TypeTextOrNull(indexBinding.TypeNode);
+            variables[indexBinding.Name] = declaredIndexType is null
                 ? "usize"
-                : indexBinding.Type;
+                : declaredIndexType;
             mutability[indexBinding.Name] = LocalMutability.ForeachIndex;
         }
 
-        var declaredElementType = string.IsNullOrWhiteSpace(foreachStatement.ValueBinding.Type)
+        var declaredValueType = TypeTextOrNull(foreachStatement.ValueBinding.TypeNode);
+        var declaredElementType = declaredValueType is null
             ? elementType
-            : foreachStatement.ValueBinding.Type;
+            : declaredValueType;
         variables[foreachStatement.ValueBinding.Name] = declaredElementType;
         mutability[foreachStatement.ValueBinding.Name] = foreachStatement.ValueBinding.IsConst
             ? LocalMutability.ForeachConstItem
@@ -929,9 +938,9 @@ public sealed class SemanticAnalyzer(
             : string.Join(" ", failures.Select(failure => failure.Trim()));
 
     private static string FormatRequirementReference(StructRequirementNode requirement) =>
-        requirement.TypeArguments.Count == 0
+        TypeArguments(requirement.TypeArgumentNodes).Count == 0
             ? requirement.Name
-            : $"{requirement.Name}<{string.Join(", ", requirement.TypeArguments)}>";
+            : $"{requirement.Name}<{string.Join(", ", TypeArguments(requirement.TypeArgumentNodes))}>";
 
     private RequirementMatch SatisfiesRequirement(
         string concreteType,
@@ -941,9 +950,9 @@ public sealed class SemanticAnalyzer(
         ?? RequirementMatch.Failed(concreteType, requirementName, []);
 
     private static string GetFunctionDisplayName(FunctionNode function) =>
-        function.OwnerType is null
+        OwnerType(function) is null
             ? function.Name
-            : $"{function.OwnerType}.{function.Name}";
+            : $"{OwnerType(function)}.{function.Name}";
 
     private static bool IsVoidType(string type) =>
         string.Equals(type.Trim(), "void", StringComparison.Ordinal);
@@ -953,6 +962,13 @@ public sealed class SemanticAnalyzer(
 
     private static bool IsEmptyExpression(ExpressionNode expression) =>
         string.IsNullOrWhiteSpace(expression.SourceText);
+
+    private void AnalyzeType(
+        TypeNode? typeNode,
+        Cx.Compiler.Syntax.Location location,
+        ProgramNode program,
+        IReadOnlyList<string> inScopeTypeParameters) =>
+        AnalyzeType(TypeText(typeNode), location, program, inScopeTypeParameters);
 
     private void AnalyzeType(
         string type,
@@ -1010,7 +1026,7 @@ public sealed class SemanticAnalyzer(
 
                 foreach (var requirement in constraint.Requirements)
                 {
-                    var arguments = requirement.TypeArguments
+                    var arguments = TypeArguments(requirement.TypeArgumentNodes)
                         .Select(argument => GenericTypeStringRewriter.Substitute(argument, substitutions))
                         .ToList();
                     var match = _requirementMatcher?.Match(concreteType, requirement.Name, arguments);
@@ -1092,24 +1108,25 @@ public sealed class SemanticAnalyzer(
         switch (initializer)
         {
             case ForDeclarationInitializerNode declaration:
-                AnalyzeType(declaration.Type, declaration.Location, program, inScopeTypeParameters);
+                var declarationType = TypeText(declaration.TypeNode);
+                AnalyzeType(declaration.TypeNode, declaration.Location, program, inScopeTypeParameters);
                 AnalyzeExpression(declaration.Initializer, declaration.Location, variables, mutability);
                 if (declaration.Initializer is not null
                     && IsBareNull(declaration.Initializer)
-                    && !IsNullableType(declaration.Type))
+                    && !IsNullableType(declarationType))
                 {
                     diagnostics.Report(
                         declaration.Location,
-                        $"Cannot assign null to non-pointer type '{declaration.Type}'.");
+                        $"Cannot assign null to non-pointer type '{declarationType}'.");
                 }
 
                 CheckAssignmentCompatibility(
                     declaration.Location,
-                    declaration.Type,
+                    declarationType,
                     declaration.Initializer,
                     variables,
                     $"for variable '{declaration.Name}'");
-                variables[declaration.Name] = declaration.Type;
+                variables[declaration.Name] = declarationType;
                 mutability[declaration.Name] = declaration.IsConst ? LocalMutability.Const : LocalMutability.Mutable;
                 break;
 
@@ -1129,7 +1146,7 @@ public sealed class SemanticAnalyzer(
             switch (statement)
             {
                 case LetStatement let:
-                    yield return (let.Name, let.Type);
+                    yield return (let.Name, TypeText(let.TypeNode));
                     break;
                 case IfStatement ifStatement:
                     foreach (var variable in CollectLocalVariables(ifStatement.ThenBody))
@@ -1160,7 +1177,7 @@ public sealed class SemanticAnalyzer(
                 case ForStatement forStatement:
                     if (forStatement.Initializer is ForDeclarationInitializerNode declaration)
                     {
-                        yield return (declaration.Name, declaration.Type);
+                        yield return (declaration.Name, TypeText(declaration.TypeNode));
                     }
 
                     foreach (var variable in CollectLocalVariables(forStatement.Body))
@@ -1341,7 +1358,7 @@ public sealed class SemanticAnalyzer(
 
         var aliases = _program.TypeAliases
             .GroupBy(typeAlias => typeAlias.Name, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First().TargetType, StringComparer.Ordinal);
+            .ToDictionary(group => group.Key, group => TypeText(group.First().TargetTypeNode), StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         while (aliases.TryGetValue(type, out var targetType) && seen.Add(type))
         {
@@ -1558,7 +1575,7 @@ public sealed class SemanticAnalyzer(
             return;
         }
 
-        if (sourceExpression is InitializerExpressionNode { TypeName: null })
+        if (sourceExpression is InitializerExpressionNode { TypeNameNode: null })
         {
             return;
         }
@@ -1662,7 +1679,7 @@ public sealed class SemanticAnalyzer(
             !union.IsRaw
             && string.Equals(union.Name, targetType, StringComparison.Ordinal));
         return taggedUnion is not null
-            && taggedUnion.Variants.Any(variant => SameTypeName(ResolveAlias(variant.Type), sourceType));
+            && taggedUnion.Variants.Any(variant => SameTypeName(ResolveAlias(TypeText(variant.TypeNode)), sourceType));
     }
 
     private static bool IsBareNull(string expression) =>
@@ -2047,7 +2064,7 @@ public sealed class SemanticAnalyzer(
 
     private static bool DefinesFunction(ProgramNode program, string name) =>
         program.Functions.Any(function =>
-            function.OwnerType is null
+            OwnerType(function) is null
             && string.Equals(function.Name, name, StringComparison.Ordinal))
         || program.ExternFunctions.Any(function =>
             string.Equals(function.Name, name, StringComparison.Ordinal))
@@ -2130,7 +2147,7 @@ public sealed class SemanticAnalyzer(
             return;
         }
 
-        if (ResolveCallSignature(call.Callee, call.TypeArguments, call.Arguments, variables) is { } signature)
+        if (ResolveCallSignature(call.Callee, TypeArguments(call.TypeArgumentNodes), call.Arguments, variables) is { } signature)
         {
             CheckCallArguments(location, signature, call.Arguments, variables);
             return;
@@ -2493,6 +2510,19 @@ public sealed class SemanticAnalyzer(
     private static bool IsIdentifierStart(char ch) => char.IsLetter(ch) || ch == '_';
 
     private static bool IsIdentifierPart(char ch) => char.IsLetterOrDigit(ch) || ch == '_';
+
+    private static string? OwnerType(FunctionNode function) => TypeTextOrNull(function.OwnerTypeNode);
+
+    private static IReadOnlyList<string> TypeArguments(IReadOnlyList<TypeNode> nodes) =>
+        nodes.Select(TypeText).ToList();
+
+    private static string TypeText(TypeNode? typeNode) => typeNode?.TypeName ?? string.Empty;
+
+    private static string? TypeTextOrNull(TypeNode? typeNode)
+    {
+        var type = TypeText(typeNode);
+        return string.IsNullOrWhiteSpace(type) ? null : type;
+    }
 
     private sealed record CallSignature(
         string Name,
