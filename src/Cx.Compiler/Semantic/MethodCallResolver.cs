@@ -66,7 +66,7 @@ internal sealed class MethodCallResolver(ProgramNode program, TypeSystem typeSys
 
         var aliases = program.TypeAliases
             .GroupBy(typeAlias => typeAlias.Name, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First().TargetType, StringComparer.Ordinal);
+            .ToDictionary(group => group.Key, group => TypeText(group.First().TargetTypeNode), StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         while (aliases.TryGetValue(type, out var targetType) && seen.Add(type))
         {
@@ -93,4 +93,6 @@ internal sealed class MethodCallResolver(ProgramNode program, TypeSystem typeSys
         MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
         _ => null,
     };
+
+    private static string TypeText(TypeNode? typeNode) => typeNode?.TypeName ?? string.Empty;
 }

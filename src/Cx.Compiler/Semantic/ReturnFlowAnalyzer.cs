@@ -141,7 +141,7 @@ internal sealed class ReturnFlowAnalyzer(ProgramNode program, ExpressionTypeReso
 
         var aliases = program.TypeAliases
             .GroupBy(typeAlias => typeAlias.Name, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First().TargetType, StringComparer.Ordinal);
+            .ToDictionary(group => group.Key, group => TypeText(group.First().TargetTypeNode), StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         while (aliases.TryGetValue(type, out var targetType) && seen.Add(type))
         {
@@ -160,4 +160,6 @@ internal sealed class ReturnFlowAnalyzer(ProgramNode program, ExpressionTypeReso
 
         return type.TrimEnd();
     }
+
+    private static string TypeText(TypeNode? typeNode) => typeNode?.TypeName ?? string.Empty;
 }

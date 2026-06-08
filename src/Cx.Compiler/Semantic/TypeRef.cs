@@ -23,7 +23,7 @@ internal sealed class TypeRefParser(ProgramNode program)
 {
     private readonly IReadOnlyDictionary<string, string> _aliases = program.TypeAliases
         .GroupBy(alias => alias.Name, StringComparer.Ordinal)
-        .ToDictionary(group => group.Key, group => group.First().TargetType, StringComparer.Ordinal);
+        .ToDictionary(group => group.Key, group => TypeText(group.First().TargetTypeNode), StringComparer.Ordinal);
     private readonly IReadOnlySet<string> _enumNames = program.Enums
         .Where(enumNode => !string.IsNullOrWhiteSpace(enumNode.Name))
         .Select(enumNode => enumNode.Name)
@@ -285,6 +285,8 @@ internal sealed class TypeRefParser(ProgramNode program)
         values.Add(text[start..].Trim());
         return values.Where(value => value.Length > 0).ToList();
     }
+
+    private static string TypeText(TypeNode? typeNode) => typeNode?.TypeName ?? string.Empty;
 }
 
 internal sealed class TypeCompatibility(TypeRefParser parser)

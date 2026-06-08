@@ -21,9 +21,9 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
         _resolver = new ExpressionTypeResolver(programWithGlobals);
         _typeSystem = new TypeSystem(programWithGlobals);
         _globals = globalVariables
-            .Where(global => !string.IsNullOrWhiteSpace(global.Type))
+            .Where(global => !string.IsNullOrWhiteSpace(TypeText(global.TypeNode)))
             .GroupBy(global => global.Name, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First().Type, StringComparer.Ordinal);
+            .ToDictionary(group => group.Key, group => TypeText(group.First().TypeNode), StringComparer.Ordinal);
 
         return programWithGlobals with
         {
@@ -42,9 +42,9 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
     private IReadOnlyList<GlobalVariableNode> InferGlobalVariables(IReadOnlyList<GlobalVariableNode> globals)
     {
         var variables = globals
-            .Where(global => !string.IsNullOrWhiteSpace(global.Type))
+            .Where(global => !string.IsNullOrWhiteSpace(TypeText(global.TypeNode)))
             .GroupBy(global => global.Name, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First().Type, StringComparer.Ordinal);
+            .ToDictionary(group => group.Key, group => TypeText(group.First().TypeNode), StringComparer.Ordinal);
         var inferred = new List<GlobalVariableNode>();
 
         foreach (var global in globals)
@@ -53,7 +53,7 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
             var type = InferVariableType(
                 global.Location,
                 global.Name,
-                global.Type,
+                TypeText(global.TypeNode),
                 initializer,
                 variables,
                 "global");
@@ -78,7 +78,7 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
         var variables = _globals
             .Concat(function.Parameters
             .Where(parameter => !parameter.IsVariadic)
-            .Select(parameter => new KeyValuePair<string, string>(parameter.Name, parameter.Type)))
+            .Select(parameter => new KeyValuePair<string, string>(parameter.Name, TypeText(parameter.TypeNode))))
             .GroupBy(pair => pair.Key, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.First().Value, StringComparer.Ordinal);
 
@@ -151,7 +151,7 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
     private LetStatement InferLetStatement(LetStatement let, Dictionary<string, string> variables)
     {
         var initializer = InferExpression(let.Initializer, variables);
-        var type = InferVariableType(let.Location, let.Name, let.Type, initializer, variables, "local");
+        var type = InferVariableType(let.Location, let.Name, TypeText(let.TypeNode), initializer, variables, "local");
         if (!string.IsNullOrWhiteSpace(type))
         {
             variables[let.Name] = type;
@@ -197,7 +197,7 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
         var type = InferVariableType(
             declaration.Location,
             declaration.Name,
-            declaration.Type,
+            TypeText(declaration.TypeNode),
             initializer,
             variables,
             "for variable");
@@ -235,9 +235,10 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
         {
             if (foreachStatement.KeyBinding is { } keyBinding && keyType is not null)
             {
-                foreachVariables[keyBinding.Name] = string.IsNullOrWhiteSpace(keyBinding.Type)
+                var keyBindingType = TypeTextOrNull(keyBinding.TypeNode);
+                foreachVariables[keyBinding.Name] = keyBindingType is null
                     ? keyType
-                    : keyBinding.Type;
+                    : keyBindingType;
             }
 
             AddForeachBindings(foreachStatement, foreachVariables, elementType);
@@ -275,7 +276,7 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
     }
 
     private static ForeachBinding FillBindingType(ForeachBinding binding, string inferredType) =>
-        string.IsNullOrWhiteSpace(binding.Type)
+        string.IsNullOrWhiteSpace(TypeText(binding.TypeNode))
             ? binding with { TypeNode = CreateInferredTypeNode(binding.Location, inferredType) }
             : binding;
 
@@ -286,14 +287,16 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
     {
         if (foreachStatement.IndexBinding is { } indexBinding)
         {
-            variables[indexBinding.Name] = string.IsNullOrWhiteSpace(indexBinding.Type)
+            var indexBindingType = TypeTextOrNull(indexBinding.TypeNode);
+            variables[indexBinding.Name] = indexBindingType is null
                 ? "usize"
-                : indexBinding.Type;
+                : indexBindingType;
         }
 
-        var valueType = string.IsNullOrWhiteSpace(foreachStatement.ValueBinding.Type)
+        var valueBindingType = TypeTextOrNull(foreachStatement.ValueBinding.TypeNode);
+        var valueType = valueBindingType is null
             ? elementType
-            : foreachStatement.ValueBinding.Type;
+            : valueBindingType;
         variables[foreachStatement.ValueBinding.Name] = valueType;
     }
 
@@ -338,7 +341,7 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
             return declaredType;
         }
 
-        if (initializer is InitializerExpressionNode { TypeName: null })
+        if (initializer is InitializerExpressionNode { TypeNameNode: null })
         {
             diagnostics.Report(location, $"Cannot infer type for {subject} '{name}' from an untyped initializer; write an explicit type.");
             return declaredType;
@@ -390,7 +393,7 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
         if (call.Callee is NameExpressionNode functionName)
         {
             var function = _program.Functions.FirstOrDefault(function =>
-                function.OwnerType is null
+                OwnerType(function) is null
                 && function.Name == functionName.SourceText
                 && function.TypeParameters.Count > 0);
             if (function is null
@@ -411,7 +414,7 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
         {
             var staticFunction = _program.Functions.FirstOrDefault(function =>
                 function.IsStatic
-                && function.OwnerType == targetName
+                && OwnerType(function) == targetName
                 && function.Name == member.MemberName
                 && function.TypeParameters.Count > 0);
             if (staticFunction is null
@@ -448,8 +451,8 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
             .ToList();
         var unbound = function.TypeParameters
             .Where(typeParameter =>
-                !fixedParameters.Any(parameter => TypeMentionsParameter(parameter.Type, typeParameter))
-                && TypeMentionsParameter(function.ReturnType, typeParameter))
+                !fixedParameters.Any(parameter => TypeMentionsParameter(TypeText(parameter.TypeNode), typeParameter))
+                && TypeMentionsParameter(TypeText(function.ReturnTypeNode), typeParameter))
             .ToList();
 
         if (unbound.Count == 0)
@@ -462,7 +465,7 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
         var pronoun = unbound.Count == 1 ? "it" : "they";
         var appears = unbound.Count == 1 ? "appears" : "appear";
         var argumentText = arguments.Count == 0 ? "no arguments" : "the provided arguments";
-        var suggestion = function.IsStatic && function.OwnerType is not null
+        var suggestion = function.IsStatic && OwnerType(function) is not null
             ? $" Try '{suggestedCall}(...)' and replace 'int' with the desired type."
             : $" Try '{suggestedCall}<int>(...)' and replace 'int' with the desired type.";
 
@@ -582,7 +585,7 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
         var functionVariables = CopyVariables(variables);
         foreach (var parameter in function.Parameters.Where(parameter => !parameter.IsVariadic))
         {
-            functionVariables[parameter.Name] = parameter.Type;
+            functionVariables[parameter.Name] = TypeText(parameter.TypeNode);
         }
 
         return function with
@@ -596,5 +599,15 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
 
     private static Dictionary<string, string> CopyVariables(IReadOnlyDictionary<string, string> variables) =>
         new(variables, StringComparer.Ordinal);
+
+    private static string? OwnerType(FunctionNode function) => TypeTextOrNull(function.OwnerTypeNode);
+
+    private static string TypeText(TypeNode? typeNode) => typeNode?.TypeName ?? string.Empty;
+
+    private static string? TypeTextOrNull(TypeNode? typeNode)
+    {
+        var type = TypeText(typeNode);
+        return string.IsNullOrWhiteSpace(type) ? null : type;
+    }
 
 }

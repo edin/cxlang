@@ -23,7 +23,7 @@ public sealed class RequirementMatcher
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
         _typeAliases = program.TypeAliases
             .GroupBy(typeAlias => typeAlias.Name, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First().TargetType, StringComparer.Ordinal);
+            .ToDictionary(group => group.Key, group => TypeText(group.First().TargetTypeNode), StringComparer.Ordinal);
     }
 
     public RequirementMatch Match(
@@ -91,7 +91,7 @@ public sealed class RequirementMatcher
                 case RequirementFieldNode field:
                     if (!hasStructType)
                     {
-                        failures.Add($"Missing field '{field.Name}: {Substitute(field.Type, bindings)}'.");
+                        failures.Add($"Missing field '{field.Name}: {Substitute(TypeText(field.TypeNode), bindings)}'.");
                         break;
                     }
 
@@ -175,17 +175,19 @@ public sealed class RequirementMatcher
         {
             var expected = interfaceMethod.Parameters[i];
             var actual = method.ParameterTypes[i + 1];
-            if (!Unify(expected.Type, TypeRefFormatter.ToCxString(actual), candidateBindings))
+            var expectedType = TypeText(expected.TypeNode);
+            if (!Unify(expectedType, TypeRefFormatter.ToCxString(actual), candidateBindings))
             {
                 failures.Add(
-                    $"Method '{interfaceMethod.Name}' parameter {i + 1} has type '{TypeRefFormatter.ToCxString(actual)}', expected '{Substitute(expected.Type, bindings)}'.");
+                    $"Method '{interfaceMethod.Name}' parameter {i + 1} has type '{TypeRefFormatter.ToCxString(actual)}', expected '{Substitute(expectedType, bindings)}'.");
             }
         }
 
-        if (!Unify(interfaceMethod.ReturnType, TypeRefFormatter.ToCxString(method.ReturnType), candidateBindings))
+        var expectedReturnType = TypeText(interfaceMethod.ReturnTypeNode);
+        if (!Unify(expectedReturnType, TypeRefFormatter.ToCxString(method.ReturnType), candidateBindings))
         {
             failures.Add(
-                $"Method '{interfaceMethod.Name}' returns '{TypeRefFormatter.ToCxString(method.ReturnType)}', expected '{Substitute(interfaceMethod.ReturnType, bindings)}'.");
+                $"Method '{interfaceMethod.Name}' returns '{TypeRefFormatter.ToCxString(method.ReturnType)}', expected '{Substitute(expectedReturnType, bindings)}'.");
         }
     }
 
@@ -205,7 +207,7 @@ public sealed class RequirementMatcher
 
             foreach (var required in constraint.Requirements)
             {
-                var arguments = required.TypeArguments
+                var arguments = TypeArguments(required.TypeArgumentNodes)
                     .Select(argument => Substitute(argument, bindings))
                     .ToList();
                 var match = Match(constrainedType, required.Name, arguments, activeMatches);
@@ -252,16 +254,17 @@ public sealed class RequirementMatcher
         List<string> failures)
     {
         var actualField = fields.FirstOrDefault(candidate => candidate.Name == field.Name);
+        var expectedFieldType = TypeText(field.TypeNode);
         if (actualField is null)
         {
-            failures.Add($"Missing field '{field.Name}: {Substitute(field.Type, bindings)}'.");
+            failures.Add($"Missing field '{field.Name}: {Substitute(expectedFieldType, bindings)}'.");
             return;
         }
 
-        if (!Unify(field.Type, TypeRefFormatter.ToCxString(actualField.Type), bindings))
+        if (!Unify(expectedFieldType, TypeRefFormatter.ToCxString(actualField.Type), bindings))
         {
             failures.Add(
-                $"Field '{field.Name}' has type '{TypeRefFormatter.ToCxString(actualField.Type)}', expected '{Substitute(field.Type, bindings)}'.");
+                $"Field '{field.Name}' has type '{TypeRefFormatter.ToCxString(actualField.Type)}', expected '{Substitute(expectedFieldType, bindings)}'.");
         }
     }
 
@@ -286,7 +289,7 @@ public sealed class RequirementMatcher
         if (method is null)
         {
             var freeFunction = _program.Functions.FirstOrDefault(candidate =>
-                candidate.OwnerType is null
+                OwnerType(candidate) is null
                 && !candidate.IsStatic
                 && candidate.Name == function.Name
                 && candidate.Parameters.Count == function.Parameters.Count
@@ -305,18 +308,20 @@ public sealed class RequirementMatcher
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var actualType = TypeRefFormatter.ToCxString(method.ParameterTypes[i]);
-            if (!Unify(function.Parameters[i].Type, actualType, candidateBindings))
+            var expectedType = TypeText(function.Parameters[i].TypeNode);
+            if (!Unify(expectedType, actualType, candidateBindings))
             {
                 failures.Add(
-                    $"Method '{function.Name}' parameter {i + 1} has type '{actualType}', expected '{Substitute(function.Parameters[i].Type, bindings)}'.");
+                    $"Method '{function.Name}' parameter {i + 1} has type '{actualType}', expected '{Substitute(expectedType, bindings)}'.");
             }
         }
 
         var actualReturnType = TypeRefFormatter.ToCxString(method.ReturnType);
-        if (!Unify(function.ReturnType, actualReturnType, candidateBindings))
+        var expectedReturnType = TypeText(function.ReturnTypeNode);
+        if (!Unify(expectedReturnType, actualReturnType, candidateBindings))
         {
             failures.Add(
-                $"Method '{function.Name}' returns '{actualReturnType}', expected '{Substitute(function.ReturnType, bindings)}'.");
+                $"Method '{function.Name}' returns '{actualReturnType}', expected '{Substitute(expectedReturnType, bindings)}'.");
         }
 
         if (failures.Count == failureStart)
@@ -348,18 +353,20 @@ public sealed class RequirementMatcher
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var actualType = TypeRefFormatter.ToCxString(method.ParameterTypes[i]);
-            if (!Unify(function.Parameters[i].Type, actualType, candidateBindings))
+            var expectedType = TypeText(function.Parameters[i].TypeNode);
+            if (!Unify(expectedType, actualType, candidateBindings))
             {
                 failures.Add(
-                    $"Static method '{function.Name}' parameter {i + 1} has type '{actualType}', expected '{Substitute(function.Parameters[i].Type, bindings)}'.");
+                    $"Static method '{function.Name}' parameter {i + 1} has type '{actualType}', expected '{Substitute(expectedType, bindings)}'.");
             }
         }
 
         var actualReturnType = TypeRefFormatter.ToCxString(method.ReturnType);
-        if (!Unify(function.ReturnType, actualReturnType, candidateBindings))
+        var expectedReturnType = TypeText(function.ReturnTypeNode);
+        if (!Unify(expectedReturnType, actualReturnType, candidateBindings))
         {
             failures.Add(
-                $"Static method '{function.Name}' returns '{actualReturnType}', expected '{Substitute(function.ReturnType, bindings)}'.");
+                $"Static method '{function.Name}' returns '{actualReturnType}', expected '{Substitute(expectedReturnType, bindings)}'.");
         }
 
         if (failures.Count == failureStart)
@@ -384,20 +391,21 @@ public sealed class RequirementMatcher
         IReadOnlyDictionary<string, string> currentBindings)
     {
         var bindings = new Dictionary<string, string>(currentBindings, StringComparer.Ordinal);
-        if (candidate.OwnerType is null)
+        var candidateOwnerType = OwnerType(candidate);
+        if (candidateOwnerType is null)
         {
             return bindings;
         }
 
         var normalizedOwnerType = StripPointer(ResolveAlias(ownerType));
         if (!TryParseGenericUse(normalizedOwnerType, out var ownerName, out var ownerArguments)
-            || !string.Equals(ownerName, candidate.OwnerType, StringComparison.Ordinal))
+            || !string.Equals(ownerName, candidateOwnerType, StringComparison.Ordinal))
         {
             return bindings;
         }
 
         var ownerDefinition = _program.Structs.FirstOrDefault(structNode =>
-            string.Equals(structNode.Name, candidate.OwnerType, StringComparison.Ordinal)
+            string.Equals(structNode.Name, candidateOwnerType, StringComparison.Ordinal)
             && structNode.TypeParameters.Count == ownerArguments.Count);
         if (ownerDefinition is null)
         {
@@ -425,13 +433,13 @@ public sealed class RequirementMatcher
 
         for (var i = 0; i < requirement.Parameters.Count; i++)
         {
-            if (!Unify(requirement.Parameters[i].Type, candidate.Parameters[i].Type, bindings))
+            if (!Unify(TypeText(requirement.Parameters[i].TypeNode), TypeText(candidate.Parameters[i].TypeNode), bindings))
             {
                 return false;
             }
         }
 
-        return Unify(requirement.ReturnType, candidate.ReturnType, bindings);
+        return Unify(TypeText(requirement.ReturnTypeNode), TypeText(candidate.ReturnTypeNode), bindings);
     }
 
     private bool TryResolveStruct(string type, out StructNode structNode)
@@ -466,7 +474,7 @@ public sealed class RequirementMatcher
         var fields = definition.Fields
             .Select(field =>
             {
-                var substitutedType = Substitute(field.Type, substitutions);
+                var substitutedType = Substitute(TypeText(field.TypeNode), substitutions);
                 return new StructFieldNode(
                     field.Location,
                     field.Name,
@@ -491,7 +499,7 @@ public sealed class RequirementMatcher
         if (TryResolveStruct(type, out var structNode))
         {
             fields = structNode.Fields
-                .Select(field => new ResolvedField(field.Name, field.TypeNode?.Semantic.Type ?? _typeRefParser.Parse(field.Type), field))
+                .Select(field => new ResolvedField(field.Name, field.TypeNode?.Semantic.Type ?? _typeRefParser.Parse(TypeText(field.TypeNode)), field))
                 .ToList();
             return true;
         }
@@ -586,15 +594,16 @@ public sealed class RequirementMatcher
 
     private bool IsCandidateOwner(FunctionNode candidate, string ownerType)
     {
-        if (candidate.OwnerType is null)
+        var candidateOwnerType = OwnerType(candidate);
+        if (candidateOwnerType is null)
         {
             return false;
         }
 
         var normalizedOwnerType = StripPointer(ResolveAlias(ownerType));
         var ownerBaseName = GetGenericBaseName(normalizedOwnerType);
-        return string.Equals(candidate.OwnerType, ownerBaseName, StringComparison.Ordinal)
-            || SameType(candidate.OwnerType, normalizedOwnerType);
+        return string.Equals(candidateOwnerType, ownerBaseName, StringComparison.Ordinal)
+            || SameType(candidateOwnerType, normalizedOwnerType);
     }
 
     private static string Substitute(string type, IReadOnlyDictionary<string, string> bindings)
@@ -695,6 +704,19 @@ public sealed class RequirementMatcher
 
         arguments.Add(argumentsText[start..].Trim());
         return arguments;
+    }
+
+    private static string? OwnerType(FunctionNode function) => TypeTextOrNull(function.OwnerTypeNode);
+
+    private static IReadOnlyList<string> TypeArguments(IReadOnlyList<TypeNode> nodes) =>
+        nodes.Select(TypeText).ToList();
+
+    private static string TypeText(TypeNode? typeNode) => typeNode?.TypeName ?? string.Empty;
+
+    private static string? TypeTextOrNull(TypeNode? typeNode)
+    {
+        var type = TypeText(typeNode);
+        return string.IsNullOrWhiteSpace(type) ? null : type;
     }
 }
 

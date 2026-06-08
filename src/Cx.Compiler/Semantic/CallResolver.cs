@@ -100,8 +100,8 @@ internal sealed class CallResolver(
 
             var staticFunction = program.Functions.FirstOrDefault(function =>
                 function.IsStatic
-                && function.OwnerType is not null
-                && string.Equals(targetName, function.OwnerType, StringComparison.Ordinal)
+                && OwnerType(function) is not null
+                && string.Equals(targetName, OwnerType(function), StringComparison.Ordinal)
                 && string.Equals(function.Name, member.MemberName, StringComparison.Ordinal)
                 && (MatchesGenericArguments(function.TypeParameters, typeArguments)
                     || (typeArguments.Count == 0
@@ -120,7 +120,6 @@ internal sealed class CallResolver(
                 staticFunction,
                 staticFunction.TypeParameters,
                 staticFunction.Parameters,
-                staticFunction.ReturnType,
                 staticFunction.ReturnTypeNode,
                 staticArguments,
                 skipSelf: false,
@@ -138,10 +137,10 @@ internal sealed class CallResolver(
             ? parsedReceiverArguments
             : [];
         var instanceFunction = program.Functions.FirstOrDefault(function =>
-            function.OwnerType is not null
+            OwnerType(function) is not null
             && !function.IsStatic
             && string.Equals(function.Name, member.MemberName, StringComparison.Ordinal)
-            && string.Equals(function.OwnerType, receiverBaseType, StringComparison.Ordinal)
+            && string.Equals(OwnerType(function), receiverBaseType, StringComparison.Ordinal)
             && (MatchesGenericArguments(function.TypeParameters, typeArguments)
                 || (typeArguments.Count == 0 && function.TypeParameters.Count == receiverArguments.Count)
                 || (typeArguments.Count == 0
@@ -159,7 +158,6 @@ internal sealed class CallResolver(
                 instanceFunction,
                 instanceFunction.TypeParameters,
                 instanceFunction.Parameters,
-                instanceFunction.ReturnType,
                 instanceFunction.ReturnTypeNode,
                 instanceArguments,
                 skipSelf: true,
@@ -182,10 +180,10 @@ internal sealed class CallResolver(
 
         return new CallResolution(
             $"{receiverType}.{member.MemberName}",
-            ResolveType(interfaceMethod.ReturnTypeNode, interfaceMethod.ReturnType),
+            ResolveType(interfaceMethod.ReturnTypeNode),
             interfaceMethod.Parameters
                 .Where(parameter => !parameter.IsVariadic)
-                .Select(parameter => ResolveType(parameter.TypeNode, parameter.Type))
+                .Select(parameter => ResolveType(parameter.TypeNode))
                 .ToList(),
             interfaceMethod.Parameters.Any(parameter => parameter.IsVariadic));
     }
@@ -197,7 +195,7 @@ internal sealed class CallResolver(
         IReadOnlyDictionary<string, string> variables)
     {
         var function = program.Functions.FirstOrDefault(function =>
-            function.OwnerType is null
+            OwnerType(function) is null
             && string.Equals(function.Name, name, StringComparison.Ordinal)
             && (MatchesGenericArguments(function.TypeParameters, typeArguments)
                 || (typeArguments.Count == 0
@@ -216,7 +214,6 @@ internal sealed class CallResolver(
             function,
             function.TypeParameters,
             function.Parameters,
-            function.ReturnType,
             function.ReturnTypeNode,
             resolvedArguments,
             skipSelf: false,
@@ -248,7 +245,6 @@ internal sealed class CallResolver(
             function: null,
             function.TypeParameters,
             function.Parameters,
-            function.ReturnType,
             function.ReturnTypeNode,
             resolvedArguments,
             skipSelf: false,
@@ -282,8 +278,9 @@ internal sealed class CallResolver(
                     continue;
                 }
 
-                var arguments = reference.TypeArguments.Count == requirement.TypeParameters.Count
-                    ? reference.TypeArguments
+                var referenceTypeArguments = TypeArguments(reference.TypeArgumentNodes);
+                var arguments = referenceTypeArguments.Count == requirement.TypeParameters.Count
+                    ? referenceTypeArguments
                     : requirement.TypeParameters.Count == 1
                         ? [targetName]
                         : [];
@@ -291,12 +288,12 @@ internal sealed class CallResolver(
                 return new CallResolution(
                     $"{targetName}.{memberName}",
                     SubstituteType(
-                        ResolveType(function.ReturnTypeNode, function.ReturnType),
+                        ResolveType(function.ReturnTypeNode),
                         substitutions),
                     function.Parameters
                         .Where(parameter => !parameter.IsVariadic)
                         .Select(parameter => SubstituteType(
-                            ResolveType(parameter.TypeNode, parameter.Type),
+                            ResolveType(parameter.TypeNode),
                             substitutions))
                         .ToList(),
                     IsVariadic: false);
@@ -331,7 +328,6 @@ internal sealed class CallResolver(
         FunctionNode? function,
         IReadOnlyList<string> typeParameters,
         IReadOnlyList<ParameterNode> parameters,
-        string returnType,
         TypeNode? returnTypeNode,
         IReadOnlyList<string> typeArguments,
         bool skipSelf,
@@ -343,11 +339,11 @@ internal sealed class CallResolver(
             .ToList();
         var parameterTypes = filteredParameters
             .Where(parameter => !parameter.IsVariadic)
-            .Select(parameter => SubstituteType(ResolveType(parameter.TypeNode, parameter.Type), substitutions))
+            .Select(parameter => SubstituteType(ResolveType(parameter.TypeNode), substitutions))
             .ToList();
         return new CallResolution(
             name,
-            SubstituteType(ResolveType(returnTypeNode, returnType), substitutions),
+            SubstituteType(ResolveType(returnTypeNode), substitutions),
             parameterTypes,
             filteredParameters.Any(parameter => parameter.IsVariadic),
             function,
@@ -392,7 +388,7 @@ internal sealed class CallResolver(
         while (seen.Add(currentType))
         {
             var currentName = GetGenericBaseName(currentType);
-            if (string.Equals(function.OwnerType, currentName, StringComparison.Ordinal)
+            if (string.Equals(OwnerType(function), currentName, StringComparison.Ordinal)
                 && TryParseGenericUse(currentType, out _, out var currentArguments)
                 && currentArguments.Count == function.TypeParameters.Count)
             {
@@ -409,7 +405,7 @@ internal sealed class CallResolver(
             var receiverArguments = TryParseGenericUse(currentType, out _, out var parsedReceiverArguments)
                 ? parsedReceiverArguments
                 : [];
-            currentType = adapter.BaseType;
+            currentType = TypeText(adapter.BaseTypeNode);
             if (adapter.TypeParameters.Count == receiverArguments.Count)
             {
                 var substitutions = adapter.TypeParameters
@@ -480,7 +476,7 @@ internal sealed class CallResolver(
                 return null;
             }
 
-            if (!TryBindType(fixedParameters[i].Type, argumentType, typeParameters, bindings))
+            if (!TryBindType(TypeText(fixedParameters[i].TypeNode), argumentType, typeParameters, bindings))
             {
                 return null;
             }
@@ -494,10 +490,10 @@ internal sealed class CallResolver(
     private TypeRef Parse(string? type) =>
         _typeRefParser.Parse(type);
 
-    private TypeRef ResolveType(TypeNode? typeNode, string? fallbackType) =>
+    private TypeRef ResolveType(TypeNode? typeNode) =>
         typeNode?.Semantic.Type
         ?? (typeNode?.Syntax is null ? null : _typeSyntaxConverter.Convert(typeNode))
-        ?? Parse(fallbackType);
+        ?? Parse(TypeText(typeNode));
 
     private IReadOnlyDictionary<string, TypeRef> BuildTypeSubstitutions(
         IReadOnlyList<string> typeParameters,
@@ -524,7 +520,7 @@ internal sealed class CallResolver(
 
         var aliases = program.TypeAliases
             .GroupBy(typeAlias => typeAlias.Name, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First().TargetType, StringComparer.Ordinal);
+            .ToDictionary(group => group.Key, group => TypeText(group.First().TargetTypeNode), StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         while (aliases.TryGetValue(type, out var targetType) && seen.Add(type))
         {
@@ -737,5 +733,18 @@ internal sealed class CallResolver(
         }
 
         return -1;
+    }
+
+    private static string? OwnerType(FunctionNode function) => TypeTextOrNull(function.OwnerTypeNode);
+
+    private static IReadOnlyList<string> TypeArguments(IReadOnlyList<TypeNode> nodes) =>
+        nodes.Select(TypeText).ToList();
+
+    private static string TypeText(TypeNode? typeNode) => typeNode?.TypeName ?? string.Empty;
+
+    private static string? TypeTextOrNull(TypeNode? typeNode)
+    {
+        var type = TypeText(typeNode);
+        return string.IsNullOrWhiteSpace(type) ? null : type;
     }
 }

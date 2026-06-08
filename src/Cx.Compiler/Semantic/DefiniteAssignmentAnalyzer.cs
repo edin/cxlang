@@ -16,7 +16,7 @@ internal sealed class DefiniteAssignmentAnalyzer(
         var variables = new Dictionary<string, string>(globalVariables, StringComparer.Ordinal);
         foreach (var parameter in function.Parameters.Where(parameter => !parameter.IsVariadic))
         {
-            variables[parameter.Name] = parameter.Type;
+            variables[parameter.Name] = TypeText(parameter.TypeNode);
         }
 
         foreach (var local in CollectLocalVariables(function.Body))
@@ -63,7 +63,7 @@ internal sealed class DefiniteAssignmentAnalyzer(
         {
             case LetStatement let:
                 AnalyzeExpression(let.Initializer, variables, assigned);
-                variables[let.Name] = let.Type;
+                variables[let.Name] = TypeText(let.TypeNode);
                 if (let.Initializer is null)
                 {
                     assigned.Remove(let.Name);
@@ -179,11 +179,11 @@ internal sealed class DefiniteAssignmentAnalyzer(
                     if (matchedTaggedUnion is not null
                         && arm.BindingName is not null
                         && arm.Pattern != "_"
-                        && matchedTaggedUnion.Variants.FirstOrDefault(variant => variant.Name == arm.Pattern) is { } variant)
-                    {
-                        armVariables[arm.BindingName] = variant.Type;
-                        armAssigned.Add(arm.BindingName);
-                    }
+                    && matchedTaggedUnion.Variants.FirstOrDefault(variant => variant.Name == arm.Pattern) is { } variant)
+                {
+                    armVariables[arm.BindingName] = TypeText(variant.TypeNode);
+                    armAssigned.Add(arm.BindingName);
+                }
 
                     AnalyzeStatements(arm.Body, armVariables, armAssigned);
                     armAssignments.Add(armAssigned);
@@ -207,7 +207,7 @@ internal sealed class DefiniteAssignmentAnalyzer(
         {
             case ForDeclarationInitializerNode declaration:
                 AnalyzeExpression(declaration.Initializer, variables, assigned);
-                variables[declaration.Name] = declaration.Type;
+                variables[declaration.Name] = TypeText(declaration.TypeNode);
                 if (declaration.Initializer is null)
                 {
                     assigned.Remove(declaration.Name);
@@ -446,7 +446,7 @@ internal sealed class DefiniteAssignmentAnalyzer(
             switch (statement)
             {
                 case LetStatement let:
-                    yield return (let.Name, let.Type);
+                    yield return (let.Name, TypeText(let.TypeNode));
                     break;
                 case IfStatement ifStatement:
                     foreach (var variable in CollectLocalVariables(ifStatement.ThenBody))
@@ -477,7 +477,7 @@ internal sealed class DefiniteAssignmentAnalyzer(
                 case ForStatement forStatement:
                     if (forStatement.Initializer is ForDeclarationInitializerNode declaration)
                     {
-                        yield return (declaration.Name, declaration.Type);
+                        yield return (declaration.Name, TypeText(declaration.TypeNode));
                     }
 
                     foreach (var variable in CollectLocalVariables(forStatement.Body))
@@ -488,7 +488,7 @@ internal sealed class DefiniteAssignmentAnalyzer(
                 case ForeachStatement foreachStatement:
                     foreach (var binding in GetForeachBindings(foreachStatement))
                     {
-                        yield return (binding.Name, binding.Type);
+                        yield return (binding.Name, TypeText(binding.TypeNode));
                     }
 
                     foreach (var variable in CollectLocalVariables(foreachStatement.Body))
@@ -587,7 +587,7 @@ internal sealed class DefiniteAssignmentAnalyzer(
 
         var aliases = program.TypeAliases
             .GroupBy(typeAlias => typeAlias.Name, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First().TargetType, StringComparer.Ordinal);
+            .ToDictionary(group => group.Key, group => TypeText(group.First().TargetTypeNode), StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         while (aliases.TryGetValue(type, out var targetType) && seen.Add(type))
         {
@@ -621,4 +621,6 @@ internal sealed class DefiniteAssignmentAnalyzer(
 
         yield return foreachStatement.ValueBinding;
     }
+
+    private static string TypeText(TypeNode? typeNode) => typeNode?.TypeName ?? string.Empty;
 }

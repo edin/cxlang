@@ -31,21 +31,21 @@ internal sealed class ModuleVisibilityAnalyzer(
     {
         foreach (var typeAlias in program.TypeAliases)
         {
-            AnalyzeType(typeAlias.TargetType, typeAlias.Location, visibility);
+            AnalyzeType(typeAlias.TargetTypeNode, typeAlias.Location, visibility);
         }
 
         foreach (var externFunction in program.ExternFunctions)
         {
-            AnalyzeType(externFunction.ReturnType, externFunction.Location, visibility);
+            AnalyzeType(externFunction.ReturnTypeNode, externFunction.Location, visibility);
             foreach (var parameter in externFunction.Parameters.Where(parameter => !parameter.IsVariadic))
             {
-                AnalyzeType(parameter.Type, parameter.Location, visibility);
+                AnalyzeType(parameter.TypeNode, parameter.Location, visibility);
             }
         }
 
         foreach (var global in program.GlobalVariables)
         {
-            AnalyzeType(global.Type, global.Location, visibility);
+            AnalyzeType(global.TypeNode, global.Location, visibility);
             AnalyzeExpression(global.Initializer, visibility);
         }
 
@@ -53,7 +53,7 @@ internal sealed class ModuleVisibilityAnalyzer(
         {
             foreach (var field in structNode.Fields)
             {
-                AnalyzeType(field.Type, field.Location, visibility, structNode.TypeParameters);
+                AnalyzeType(field.TypeNode, field.Location, visibility, structNode.TypeParameters);
             }
 
             foreach (var method in structNode.Methods)
@@ -66,7 +66,7 @@ internal sealed class ModuleVisibilityAnalyzer(
         {
             foreach (var variant in union.Variants)
             {
-                AnalyzeType(variant.Type, variant.Location, visibility);
+                AnalyzeType(variant.TypeNode, variant.Location, visibility);
             }
 
             foreach (var method in union.Methods)
@@ -83,10 +83,10 @@ internal sealed class ModuleVisibilityAnalyzer(
 
     private void AnalyzeFunction(FunctionNode function, ModuleVisibility visibility)
     {
-        AnalyzeType(function.ReturnType, function.Location, visibility, function.TypeParameters);
+        AnalyzeType(function.ReturnTypeNode, function.Location, visibility, function.TypeParameters);
         foreach (var parameter in function.Parameters.Where(parameter => !parameter.IsVariadic))
         {
-            AnalyzeType(parameter.Type, parameter.Location, visibility, function.TypeParameters);
+            AnalyzeType(parameter.TypeNode, parameter.Location, visibility, function.TypeParameters);
         }
 
         var locals = new HashSet<string>(function.Parameters.Select(parameter => parameter.Name), StringComparer.Ordinal);
@@ -108,7 +108,7 @@ internal sealed class ModuleVisibilityAnalyzer(
             switch (statement)
             {
                 case LetStatement let:
-                    AnalyzeType(let.Type, let.Location, visibility);
+                    AnalyzeType(let.TypeNode, let.Location, visibility);
                     AnalyzeExpression(let.Initializer, visibility, locals);
                     break;
                 case ReturnStatement returnStatement:
@@ -173,7 +173,7 @@ internal sealed class ModuleVisibilityAnalyzer(
         switch (initializer)
         {
             case ForDeclarationInitializerNode declaration:
-                AnalyzeType(declaration.Type, declaration.Location, visibility);
+                AnalyzeType(declaration.TypeNode, declaration.Location, visibility);
                 AnalyzeExpression(declaration.Initializer, visibility, locals);
                 break;
             case ForExpressionInitializerNode expression:
@@ -201,7 +201,7 @@ internal sealed class ModuleVisibilityAnalyzer(
                 AnalyzeExpression(parenthesized.Expression, visibility, locals);
                 break;
             case CastExpressionNode cast:
-                AnalyzeType(cast.TargetType, cast.Location, visibility);
+                AnalyzeType(cast.TargetTypeNode, cast.Location, visibility);
                 AnalyzeExpression(cast.Expression, visibility, locals);
                 break;
             case UnaryExpressionNode unary:
@@ -211,9 +211,9 @@ internal sealed class ModuleVisibilityAnalyzer(
                 AnalyzeExpression(postfix.Operand, visibility, locals);
                 break;
             case SizeOfExpressionNode sizeOf:
-                if (sizeOf.TypeOperand is not null)
+                if (sizeOf.TypeOperandNode is not null)
                 {
-                    AnalyzeType(sizeOf.TypeOperand, sizeOf.Location, visibility);
+                    AnalyzeType(sizeOf.TypeOperandNode, sizeOf.Location, visibility);
                 }
 
                 AnalyzeExpression(sizeOf.ExpressionOperand, visibility, locals);
@@ -232,9 +232,9 @@ internal sealed class ModuleVisibilityAnalyzer(
                 AnalyzeExpression(conditional.WhenFalse, visibility, locals);
                 break;
             case InitializerExpressionNode initializer:
-                if (initializer.TypeName is not null)
+                if (initializer.TypeNameNode is not null)
                 {
-                    AnalyzeType(initializer.TypeName, initializer.Location, visibility);
+                    AnalyzeType(initializer.TypeNameNode, initializer.Location, visibility);
                 }
 
                 foreach (var field in initializer.Fields)
@@ -251,12 +251,12 @@ internal sealed class ModuleVisibilityAnalyzer(
             case FunctionExpressionNode function:
                 foreach (var parameter in function.Parameters.Where(parameter => !parameter.IsVariadic))
                 {
-                    AnalyzeType(parameter.Type, parameter.Location, visibility);
+                    AnalyzeType(parameter.TypeNode, parameter.Location, visibility);
                 }
 
-                if (function.ReturnType is not null)
+                if (function.ReturnTypeNode is not null)
                 {
-                    AnalyzeType(function.ReturnType, function.Location, visibility);
+                    AnalyzeType(function.ReturnTypeNode, function.Location, visibility);
                 }
 
                 AnalyzeExpression(function.ExpressionBody, visibility, locals);
@@ -274,7 +274,7 @@ internal sealed class ModuleVisibilityAnalyzer(
 
                 break;
             case GenericCallExpressionNode call:
-                foreach (var typeArgument in call.TypeArguments)
+                foreach (var typeArgument in call.TypeArgumentNodes)
                 {
                     AnalyzeType(typeArgument, call.Location, visibility);
                 }
@@ -338,6 +338,13 @@ internal sealed class ModuleVisibilityAnalyzer(
 
         diagnostics.Report(name.Location, visibility.BuildValueDiagnostic(name.SourceText));
     }
+
+    private void AnalyzeType(
+        TypeNode? typeNode,
+        Cx.Compiler.Syntax.Location location,
+        ModuleVisibility visibility,
+        IReadOnlyList<string>? typeParameters = null) =>
+        AnalyzeType(TypeText(typeNode), location, visibility, typeParameters);
 
     private void AnalyzeType(
         string type,
@@ -594,6 +601,16 @@ internal sealed class ModuleVisibilityAnalyzer(
         return arguments;
     }
 
+    private static string? OwnerType(FunctionNode function) => TypeTextOrNull(function.OwnerTypeNode);
+
+    private static string TypeText(TypeNode? typeNode) => typeNode?.TypeName ?? string.Empty;
+
+    private static string? TypeTextOrNull(TypeNode? typeNode)
+    {
+        var type = TypeText(typeNode);
+        return string.IsNullOrWhiteSpace(type) ? null : type;
+    }
+
     private sealed record ModuleVisibility(
         string ModuleName,
         IReadOnlyDictionary<string, ModuleSymbols> Modules,
@@ -797,7 +814,7 @@ internal sealed class ModuleVisibilityAnalyzer(
                     valueNames.Add(global.Name);
                 }
 
-                foreach (var function in program.Functions.Where(function => function.OwnerType is null))
+                foreach (var function in program.Functions.Where(function => OwnerType(function) is null))
                 {
                     functionNames.Add(function.Name);
                 }

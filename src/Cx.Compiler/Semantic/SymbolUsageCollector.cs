@@ -16,12 +16,12 @@ internal sealed class SymbolUsageCollector
     {
         foreach (var typeAlias in program.TypeAliases)
         {
-            builder.AddType(typeAlias.TargetType);
+            builder.AddType(typeAlias.TargetTypeNode);
         }
 
         foreach (var global in program.GlobalVariables)
         {
-            builder.AddType(global.Type);
+            builder.AddType(global.TypeNode);
             if (global.Initializer is not null)
             {
                 CollectExpression(global.Initializer, builder);
@@ -33,7 +33,7 @@ internal sealed class SymbolUsageCollector
             builder.AddType(structNode.Name);
             foreach (var requirement in structNode.Requirements)
             {
-                foreach (var argument in requirement.TypeArguments)
+                foreach (var argument in requirement.TypeArgumentNodes)
                 {
                     builder.AddType(argument);
                 }
@@ -41,7 +41,7 @@ internal sealed class SymbolUsageCollector
 
             foreach (var field in structNode.Fields)
             {
-                builder.AddType(field.Type);
+                builder.AddType(field.TypeNode);
             }
 
             foreach (var method in structNode.Methods)
@@ -55,10 +55,10 @@ internal sealed class SymbolUsageCollector
             builder.AddType(interfaceNode.Name);
             foreach (var method in interfaceNode.Methods)
             {
-                builder.AddType(method.ReturnType);
+                builder.AddType(method.ReturnTypeNode);
                 foreach (var parameter in method.Parameters.Where(parameter => !parameter.IsVariadic))
                 {
-                    builder.AddType(parameter.Type);
+                    builder.AddType(parameter.TypeNode);
                 }
             }
         }
@@ -68,7 +68,7 @@ internal sealed class SymbolUsageCollector
             builder.AddType(taggedUnion.Name);
             foreach (var variant in taggedUnion.Variants)
             {
-                builder.AddType(variant.Type);
+                builder.AddType(variant.TypeNode);
             }
 
             foreach (var method in taggedUnion.Methods)
@@ -86,15 +86,15 @@ internal sealed class SymbolUsageCollector
     private static void CollectFunction(FunctionNode function, SymbolUsageReportBuilder builder)
     {
         builder.AddFunctionDefinition(GetFunctionKey(function));
-        builder.AddType(function.ReturnType);
-        if (function.OwnerType is not null)
+        builder.AddType(function.ReturnTypeNode);
+        if (function.OwnerTypeNode is not null)
         {
-            builder.AddType(function.OwnerType);
+            builder.AddType(function.OwnerTypeNode);
         }
 
         foreach (var parameter in function.Parameters.Where(parameter => !parameter.IsVariadic))
         {
-            builder.AddType(parameter.Type);
+            builder.AddType(parameter.TypeNode);
         }
 
         CollectStatements(function.Body, builder);
@@ -110,7 +110,7 @@ internal sealed class SymbolUsageCollector
             switch (statement)
             {
                 case LetStatement let:
-                    builder.AddType(let.Type);
+                    builder.AddType(let.TypeNode);
                     if (let.Initializer is not null)
                     {
                         CollectExpression(let.Initializer, builder);
@@ -182,7 +182,7 @@ internal sealed class SymbolUsageCollector
         switch (initializer)
         {
             case ForDeclarationInitializerNode declaration:
-                builder.AddType(declaration.Type);
+                builder.AddType(declaration.TypeNode);
                 if (declaration.Initializer is not null)
                 {
                     CollectExpression(declaration.Initializer, builder);
@@ -205,7 +205,7 @@ internal sealed class SymbolUsageCollector
         }
 
         CollectSemantic(binding, builder);
-        builder.AddType(binding.Type);
+        builder.AddType(binding.TypeNode);
     }
 
     private static void CollectExpression(
@@ -219,7 +219,7 @@ internal sealed class SymbolUsageCollector
                 CollectExpression(parenthesized.Expression, builder);
                 break;
             case CastExpressionNode cast:
-                builder.AddType(cast.TargetType);
+                builder.AddType(cast.TargetTypeNode);
                 CollectExpression(cast.Expression, builder);
                 break;
             case UnaryExpressionNode unary:
@@ -229,7 +229,7 @@ internal sealed class SymbolUsageCollector
                 CollectExpression(postfix.Operand, builder);
                 break;
             case SizeOfExpressionNode sizeOf:
-                builder.AddType(sizeOf.TypeOperand);
+                builder.AddType(sizeOf.TypeOperandNode);
                 if (sizeOf.ExpressionOperand is not null)
                 {
                     CollectExpression(sizeOf.ExpressionOperand, builder);
@@ -250,7 +250,7 @@ internal sealed class SymbolUsageCollector
                 CollectExpression(conditional.WhenFalse, builder);
                 break;
             case InitializerExpressionNode initializer:
-                builder.AddType(initializer.TypeName);
+                builder.AddType(initializer.TypeNameNode);
                 foreach (var field in initializer.Fields)
                 {
                     CollectExpression(field.Value, builder);
@@ -263,10 +263,10 @@ internal sealed class SymbolUsageCollector
 
                 break;
             case FunctionExpressionNode function:
-                builder.AddType(function.ReturnType);
+                builder.AddType(function.ReturnTypeNode);
                 foreach (var parameter in function.Parameters.Where(parameter => !parameter.IsVariadic))
                 {
-                    builder.AddType(parameter.Type);
+                    builder.AddType(parameter.TypeNode);
                 }
 
                 if (function.ExpressionBody is not null)
@@ -294,7 +294,7 @@ internal sealed class SymbolUsageCollector
                 break;
             case GenericCallExpressionNode call:
                 CollectExpression(call.Callee, builder);
-                foreach (var argument in call.TypeArguments)
+                foreach (var argument in call.TypeArgumentNodes)
                 {
                     builder.AddType(argument);
                 }
@@ -340,7 +340,7 @@ internal sealed class SymbolUsageCollector
     }
 
     private static string GetFunctionKey(FunctionNode function) =>
-        function.OwnerType is null ? function.Name : $"{function.OwnerType}.{function.Name}";
+        function.OwnerTypeNode is null ? function.Name : $"{function.OwnerTypeNode.TypeName}.{function.Name}";
 }
 
 internal sealed record SymbolUsageReport(
@@ -364,6 +364,8 @@ internal sealed class SymbolUsageReportBuilder
 
     public void AddSymbol(Symbol symbol) =>
         Add(_symbols, $"{symbol.Kind}:{symbol.Name}");
+
+    public void AddType(TypeNode? type) => Add(_typeReferences, type?.TypeName);
 
     public void AddType(string? type) => Add(_typeReferences, type);
 
