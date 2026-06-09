@@ -116,7 +116,7 @@ public sealed class TypeNodeParsingTests
         var parameter = Assert.Single(function.Parameters);
         var local = Assert.IsType<LetStatement>(function.Body[0]);
 
-        Assert.Equal(field.Type, field.TypeNode?.TypeName);
+        Assert.Equal("T", field.TypeNode?.TypeName);
         Assert.Equal("Box<int>", parameter.TypeNode?.TypeName);
         Assert.Equal("Box<int>", function.ReturnTypeNode?.TypeName);
         Assert.Equal("Box<int>", local.TypeNode?.TypeName);
@@ -324,11 +324,11 @@ public sealed class TypeNodeParsingTests
         var structRequirement = Assert.Single(Assert.Single(program.Structs).Requirements);
         var unionVariant = program.TaggedUnions.Single().Variants[1];
 
-        Assert.Equal(field.Type, field.TypeNode?.TypeName);
-        Assert.Equal(requirementFunction.ReturnType, requirementFunction.ReturnTypeNode?.TypeName);
-        Assert.Equal(interfaceMethod.ReturnType, interfaceMethod.ReturnTypeNode?.TypeName);
-        Assert.Equal(structRequirement.TypeArguments, structRequirement.TypeArgumentNodes.Select(node => node.TypeName).ToList());
-        Assert.Equal(unionVariant.Type, unionVariant.TypeNode?.TypeName);
+        Assert.Equal("T*", field.TypeNode?.TypeName);
+        Assert.Equal("usize", requirementFunction.ReturnTypeNode?.TypeName);
+        Assert.Equal("void*", interfaceMethod.ReturnTypeNode?.TypeName);
+        Assert.Equal(["T"], structRequirement.TypeArgumentNodes.Select(node => node.TypeName).ToList());
+        Assert.Equal("Vec<int>", unionVariant.TypeNode?.TypeName);
     }
 
     [Fact]
@@ -405,8 +405,8 @@ public sealed class TypeNodeParsingTests
         Assert.Equal("Box<int>*", cast.TargetTypeNode?.TypeName);
         Assert.Equal("Box<int>", sizeOf.TypeOperandNode?.TypeName);
         Assert.Equal("Box<int>", initializer.TypeNameNode?.TypeName);
-        Assert.Equal(genericCall.TypeArguments, genericCall.TypeArgumentNodes.Select(node => node.TypeName).ToList());
-        Assert.Equal(functionExpression.ReturnType, functionExpression.ReturnTypeNode?.TypeName);
+        Assert.Equal(["Box<int>"], genericCall.TypeArgumentNodes.Select(node => node.TypeName).ToList());
+        Assert.Equal("Box<int>", functionExpression.ReturnTypeNode?.TypeName);
         Assert.Equal("Box<int>", Assert.Single(functionExpression.Parameters).TypeNode?.TypeName);
     }
 

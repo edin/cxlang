@@ -30,7 +30,7 @@ public sealed class GenericSpecializationPassTests
         CompilerTestHelpers.AssertNoErrors(diagnostics);
 
         var specializations = lowered.Functions
-            .Where(function => function.TypeParameters.Count == 0 && function.TypeArguments.Count > 0)
+            .Where(function => function.TypeParameters.Count == 0 && FunctionTypeArguments(function).Count > 0)
             .ToList();
         var identity = Assert.Single(specializations);
         var main = lowered.Functions.Single(function => function.Name == "main");
@@ -38,11 +38,11 @@ public sealed class GenericSpecializationPassTests
         var call = Assert.IsType<GenericCallExpressionNode>(ret.Expression);
 
         Assert.Equal("identity", identity.Name);
-        Assert.Equal(["int"], identity.TypeArguments);
+        Assert.Equal(["int"], FunctionTypeArguments(identity));
         Assert.Equal("int", identity.ReturnTypeNode.ToTypeName());
         Assert.Equal("int", Assert.Single(identity.Parameters).TypeNode.ToTypeName());
         Assert.Same(identity, call.Semantic.ResolvedCall?.Function);
-        Assert.DoesNotContain(lowered.Functions, function => function.Name == "unused" && function.TypeArguments.Count > 0);
+        Assert.DoesNotContain(lowered.Functions, function => function.Name == "unused" && FunctionTypeArguments(function).Count > 0);
     }
 
     [Fact]
@@ -64,9 +64,9 @@ public sealed class GenericSpecializationPassTests
         var lowered = GenericSpecializationPass.Apply(program, diagnostics);
         CompilerTestHelpers.AssertNoErrors(diagnostics);
 
-        var identity = Assert.Single(lowered.Functions, function => function.Name == "identity" && function.TypeArguments.Count > 0);
+        var identity = Assert.Single(lowered.Functions, function => function.Name == "identity" && FunctionTypeArguments(function).Count > 0);
 
-        Assert.Equal(["int"], identity.TypeArguments);
+        Assert.Equal(["int"], FunctionTypeArguments(identity));
         Assert.Equal("int", identity.ReturnTypeNode.ToTypeName());
         Assert.Equal("int", Assert.Single(identity.Parameters).TypeNode.ToTypeName());
     }
@@ -102,9 +102,12 @@ public sealed class GenericSpecializationPassTests
         var initializer = Assert.IsType<InitializerExpressionNode>(let.Initializer);
 
         Assert.Equal("value", field.Name);
-        Assert.Equal("int", field.Type);
+        Assert.Equal("int", field.TypeNode?.TypeName);
         Assert.Equal("Box_int", let.TypeNode?.TypeName);
         Assert.Equal("Box_int", initializer.TypeNameNode?.TypeName);
         Assert.DoesNotContain(lowered.Structs, structNode => structNode.Name == "Unused_int");
     }
+
+    private static IReadOnlyList<string> FunctionTypeArguments(FunctionNode function) =>
+        (function.TypeArgumentNodes ?? []).Select(node => node.TypeName).ToList();
 }

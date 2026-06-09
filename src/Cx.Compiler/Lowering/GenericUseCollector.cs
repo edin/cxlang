@@ -864,8 +864,8 @@ internal sealed class GenericUseCollector(ProgramNode program)
         return string.IsNullOrWhiteSpace(type) ? null : type;
     }
 
-    private IReadOnlyList<string> TypeArguments(IReadOnlyList<TypeNode> typeArgumentNodes) =>
-        typeArgumentNodes.Select(TypeText).ToList();
+    private IReadOnlyList<string> TypeArguments(IReadOnlyList<TypeNode>? typeArgumentNodes) =>
+        (typeArgumentNodes ?? []).Select(TypeText).ToList();
 
     private string TypeText(TypeNode? typeNode)
     {

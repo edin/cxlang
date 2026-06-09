@@ -313,10 +313,8 @@ public sealed class GenericLoweringServicesTests
         Assert.Equal("Box_int*", cast.TargetTypeNode?.TypeName);
         Assert.Equal("Box_int", sizeOf.TypeOperandNode?.TypeName);
         Assert.Equal("Box_int", initializer.TypeNameNode?.TypeName);
-        Assert.Equal(["Box_int"], genericCall.TypeArguments);
-        Assert.Equal(genericCall.TypeArguments, genericCall.TypeArgumentNodes.Select(node => node.TypeName).ToList());
-        Assert.Equal("Box_int", functionExpression.ReturnType);
-        Assert.Equal(functionExpression.ReturnType, functionExpression.ReturnTypeNode?.TypeName);
+        Assert.Equal(["Box_int"], genericCall.TypeArgumentNodes.Select(node => node.TypeName).ToList());
+        Assert.Equal("Box_int", functionExpression.ReturnTypeNode?.TypeName);
         Assert.Equal("Box_int", Assert.Single(functionExpression.Parameters).TypeNode.ToTypeName());
     }
 
@@ -395,7 +393,7 @@ public sealed class GenericLoweringServicesTests
         var box = Assert.Single(structs);
         var field = Assert.Single(box.Fields);
         Assert.Equal("Box_int", box.Name);
-        Assert.Equal("int", field.Type);
+        Assert.Equal("int", field.TypeNode?.TypeName);
     }
 
     [Fact]
@@ -421,11 +419,9 @@ public sealed class GenericLoweringServicesTests
         var value = box.Fields.Single(field => field.Name == "value");
         var next = box.Fields.Single(field => field.Name == "next");
 
-        Assert.Equal("int", value.Type);
-        Assert.Equal(value.Type, value.TypeNode?.TypeName);
-        Assert.Equal(value.Type, TypeRefFormatter.ToCxString(value.TypeNode!.Semantic.Type!));
-        Assert.Equal("Box<int>*", next.Type);
-        Assert.Equal(next.Type, next.TypeNode?.TypeName);
-        Assert.Equal(next.Type, TypeRefFormatter.ToCxString(next.TypeNode!.Semantic.Type!));
+        Assert.Equal("int", value.TypeNode?.TypeName);
+        Assert.Equal("int", TypeRefFormatter.ToCxString(value.TypeNode!.Semantic.Type!));
+        Assert.Equal("Box<int>*", next.TypeNode?.TypeName);
+        Assert.Equal("Box<int>*", TypeRefFormatter.ToCxString(next.TypeNode!.Semantic.Type!));
     }
 }
