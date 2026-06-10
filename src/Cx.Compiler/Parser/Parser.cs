@@ -555,7 +555,7 @@ public sealed partial class Parser
         var nameToken = Expect(TokenType.Identifier, "Expected declared type name.");
         Expect(TokenType.Equals, "Expected '=' after declared type name.");
 
-        var targetTypeNode = CreateTypeNode(nameToken?.Location ?? typeToken?.Location ?? Current.Location, "opaque");
+        var targetTypeNode = TypeNode.Named(nameToken?.Location ?? typeToken?.Location ?? Current.Location, "opaque");
         if (!ConsumeOptional(TokenType.Opaque))
         {
             targetTypeNode = ParseTypeNode();
@@ -941,7 +941,7 @@ public sealed partial class Parser
             && ownerType is not null
             && !HasExplicitReceiverParameter(ownerType, parameters.FirstOrDefault()))
         {
-            var selfTypeNode = CreateTypeNode(fnLocation, "Self*");
+            var selfTypeNode = TypeNode.Pointer(fnLocation, new NamedTypeSyntaxNode("Self"));
             parameters.Insert(0, new ParameterNode(fnLocation, "self", [], IsVariadic: false, TypeNode: selfTypeNode));
         }
 

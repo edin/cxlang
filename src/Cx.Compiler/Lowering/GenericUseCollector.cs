@@ -450,7 +450,7 @@ internal sealed class GenericUseCollector(ProgramNode program)
                 case LetStatement { Initializer: not null } let:
                     foreach (var expression in EnumerateExpressions(let.Initializer)) yield return expression;
                     break;
-                case ReturnStatement ret:
+                case ReturnStatement { Expression: not null } ret:
                     foreach (var expression in EnumerateExpressions(ret.Expression)) yield return expression;
                     break;
                 case CStatement c:
@@ -602,7 +602,7 @@ internal sealed class GenericUseCollector(ProgramNode program)
                         yield return let.Initializer.SourceText;
                     }
                     break;
-                case ReturnStatement ret:
+                case ReturnStatement { Expression: not null } ret:
                     yield return ret.Expression.SourceText;
                     break;
                 case CStatement c:

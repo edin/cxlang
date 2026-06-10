@@ -499,7 +499,9 @@ public sealed class ExpressionTokenParserTests
             """);
 
         var statement = Assert.Single(program.Functions.Single().Body);
-        return Assert.IsType<ReturnStatement>(statement).Expression;
+        var returnExpression = Assert.IsType<ReturnStatement>(statement).Expression;
+        Assert.NotNull(returnExpression);
+        return returnExpression;
     }
 
 }

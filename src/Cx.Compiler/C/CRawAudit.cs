@@ -65,7 +65,7 @@ internal sealed class CRawAuditCollector
                 VisitOptionalExpression(local.Initializer, path + ".initializer");
                 break;
             case CReturnStatement ret:
-                VisitExpression(ret.Expression, path + ".return");
+                VisitOptionalExpression(ret.Expression, path + ".return");
                 break;
             case CExpressionStatement expression:
                 VisitExpression(expression.Expression, path + ".expression");

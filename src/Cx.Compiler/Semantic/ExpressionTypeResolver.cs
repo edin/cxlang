@@ -602,7 +602,7 @@ internal sealed class ExpressionTypeResolver(
                         var substitutedType = GenericTypeStringRewriter.Substitute(TypeText(field.TypeNode), substitutions);
                         return field with
                         {
-                            TypeNode = TypeNode.Create(field.Location, substitutedType),
+                            TypeNode = TypeNode.CreateFromText(field.Location, substitutedType),
                         };
                     })
                     .ToList(),

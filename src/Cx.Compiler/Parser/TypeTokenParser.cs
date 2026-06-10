@@ -10,14 +10,17 @@ internal static class TypeTokenParser
     {
         if (tokens.Count == 0)
         {
-            return TypeNode.Create(new Location(new("<type-token-parser>", string.Empty), 0, 1, 1), string.Empty);
+            return TypeNode.CreateFromText(new Location(new("<type-token-parser>", string.Empty), 0, 1, 1), string.Empty);
         }
 
         var syntax = TryParseSyntax(tokens);
-        var typeName = syntax is null
-            ? ToTypeName(tokens)
-            : TypeSyntaxFormatter.ToCxString(syntax);
-        return new TypeNode(tokens[0].Location, typeName, syntax ?? TypeSyntaxParser.Parse(typeName));
+        if (syntax is not null)
+        {
+            return TypeNode.Create(tokens[0].Location, syntax);
+        }
+
+        var typeName = ToTypeName(tokens);
+        return new TypeNode(tokens[0].Location, typeName, new NamedTypeSyntaxNode(typeName));
     }
 
     public static string ToTypeName(IReadOnlyList<Token> tokens) =>

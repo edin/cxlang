@@ -17,7 +17,7 @@ internal static class TypeNodeRewriter
             return null;
         }
 
-        var rewritten = TypeNode.Create(typeNode.Location, rewriteTypeName(typeNode.TypeName));
+        var rewritten = TypeNode.CreateFromText(typeNode.Location, rewriteTypeName(typeNode.TypeName));
         SyntaxNode.CloneSemantic(typeNode, rewritten);
         if (typeNode.Semantic.Type is null)
         {

@@ -5,14 +5,25 @@ public sealed record TypeNode(
     string TypeName,
     TypeSyntaxNode? Syntax = null) : SyntaxNode(Location)
 {
-    public static TypeNode Create(Location location, string typeName) =>
+    public static TypeNode CreateFromText(Location location, string typeName) =>
         new(location, typeName, TypeSyntaxParser.Parse(typeName));
+
+    public static TypeNode Create(Location location, TypeSyntaxNode syntax) =>
+        new(location, TypeSyntaxFormatter.ToCxString(syntax), syntax);
+
+    public static TypeNode Named(Location location, string name) =>
+        Create(location, new NamedTypeSyntaxNode(name));
+
+    public static TypeNode Pointer(Location location, TypeSyntaxNode element) =>
+        Create(location, new PointerTypeSyntaxNode(element));
 }
 
 public static class TypeNodeExtensions
 {
     public static string ToTypeName(this TypeNode? typeNode) =>
-        typeNode?.TypeName ?? string.Empty;
+        typeNode?.Syntax is { } syntax
+            ? TypeSyntaxFormatter.ToCxString(syntax)
+            : typeNode?.TypeName ?? string.Empty;
 
     public static string? ToTypeNameOrNull(this TypeNode? typeNode)
     {

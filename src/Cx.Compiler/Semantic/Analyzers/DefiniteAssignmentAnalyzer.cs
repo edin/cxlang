@@ -77,7 +77,7 @@ internal sealed class DefiniteAssignmentAnalyzer(
 
                 break;
 
-            case ReturnStatement ret:
+            case ReturnStatement { Expression: not null } ret:
                 AnalyzeExpression(ret.Expression, variables, assigned);
                 break;
 

@@ -21,7 +21,7 @@ internal static class GenericFunctionSpecializer
         {
             TypeParameters = [],
             TypeArgumentNodes = arguments
-                .Select(argument => TypeNode.Create(function.Location, argument))
+                .Select(argument => TypeNode.CreateFromText(function.Location, argument))
                 .ToList(),
             ReturnTypeNode = SubstituteTypeNode(function.ReturnTypeNode, substitutions, typeSubstitutions, selfType, selfTypeRef),
             Parameters = function.Parameters
@@ -64,7 +64,7 @@ internal static class GenericFunctionSpecializer
                 TypeNode = SubstituteTypeNode(let.TypeNode, substitutions, typeSubstitutions),
                 Initializer = SubstituteOptionalExpression(let.Initializer, substitutions, typeSubstitutions),
             },
-            ReturnStatement ret => ret with { Expression = SubstituteExpression(ret.Expression, substitutions, typeSubstitutions) },
+            ReturnStatement ret => ret with { Expression = SubstituteOptionalExpression(ret.Expression, substitutions, typeSubstitutions) },
             CStatement c => c with { Expression = SubstituteExpression(c.Expression, substitutions, typeSubstitutions) },
             IfStatement ifStatement => ifStatement with
             {

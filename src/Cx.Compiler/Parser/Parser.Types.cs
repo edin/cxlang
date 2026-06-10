@@ -188,7 +188,7 @@ public sealed partial class Parser
     }
 
     private static TypeNode CreateTypeNode(Location location, string type) =>
-        TypeNode.Create(location, type);
+        TypeNode.CreateFromText(location, type);
 
     private static bool AddToken(List<Token> tokens, Token token)
     {

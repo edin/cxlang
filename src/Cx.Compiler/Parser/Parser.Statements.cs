@@ -21,7 +21,7 @@ public sealed partial class Parser
         if (Match(TokenType.Return) is { } returnToken)
         {
             var returnExpression = Check(TokenType.Semicolon)
-                ? new RawExpressionNode(returnToken.Location, string.Empty)
+                ? null
                 : ReadExpressionUntil(returnToken.Location, TokenType.Semicolon);
             Expect(TokenType.Semicolon, "Expected ';' after return statement.");
             return new ReturnStatement(returnToken.Location, returnExpression);

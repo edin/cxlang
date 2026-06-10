@@ -353,7 +353,7 @@ public sealed class CxCompiler
         {
             Initializer = let.Initializer is null ? null : RewriteTestExpression(let.Initializer),
         },
-        ReturnStatement ret => ret with { Expression = RewriteTestExpression(ret.Expression) },
+        ReturnStatement ret => ret with { Expression = ret.Expression is null ? null : RewriteTestExpression(ret.Expression) },
         CStatement c => c with { Expression = RewriteTestExpression(c.Expression) },
         IfStatement ifStatement => ifStatement with
         {
@@ -1306,7 +1306,7 @@ public sealed class CxCompiler
     }
 
     private static TypeNode RewriteTypeNode(TypeNode? typeNode, string typeName) =>
-        TypeNode.Create(
+        TypeNode.CreateFromText(
             typeNode?.Location ?? new Location(new SourceFile("<type-rewrite>", string.Empty), 0, 1, 1),
             typeName);
 }

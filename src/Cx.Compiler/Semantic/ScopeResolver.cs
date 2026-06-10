@@ -135,7 +135,7 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
                 Declare(scope, let.Name, SymbolKind.Local, TypeTextOrNull(let.TypeNode), let.Location, let);
                 break;
 
-            case ReturnStatement ret:
+            case ReturnStatement { Expression: not null } ret:
                 ResolveExpression(ret.Expression, scope);
                 break;
 

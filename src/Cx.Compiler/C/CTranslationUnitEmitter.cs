@@ -193,9 +193,16 @@ internal sealed class CTranslationUnitEmitter
                 break;
             case CReturnStatement returnStatement:
                 AppendIndent(builder, indentLevel);
-                builder.Append("return ");
-                builder.Append(_expressionEmitter.Emit(returnStatement.Expression));
-                builder.AppendLine(";");
+                if (returnStatement.Expression is null)
+                {
+                    builder.AppendLine("return;");
+                }
+                else
+                {
+                    builder.Append("return ");
+                    builder.Append(_expressionEmitter.Emit(returnStatement.Expression));
+                    builder.AppendLine(";");
+                }
                 break;
             case CBreakStatement:
                 AppendIndent(builder, indentLevel);

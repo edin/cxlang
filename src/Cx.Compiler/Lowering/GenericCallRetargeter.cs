@@ -89,7 +89,7 @@ internal static class GenericCallRetargeter
                 case LetStatement { Initializer: not null } let:
                     foreach (var expression in EnumerateExpressions(let.Initializer)) yield return expression;
                     break;
-                case ReturnStatement ret:
+                case ReturnStatement { Expression: not null } ret:
                     foreach (var expression in EnumerateExpressions(ret.Expression)) yield return expression;
                     break;
                 case CStatement c:

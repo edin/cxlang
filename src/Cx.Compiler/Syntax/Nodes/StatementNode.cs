@@ -11,7 +11,7 @@ public sealed record LetStatement(
 
 public sealed record ReturnStatement(
     Location Location,
-    ExpressionNode Expression) : StatementNode(Location);
+    ExpressionNode? Expression) : StatementNode(Location);
 
 public sealed record BreakStatement(
     Location Location) : StatementNode(Location);

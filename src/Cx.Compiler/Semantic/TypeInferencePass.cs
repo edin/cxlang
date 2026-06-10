@@ -109,7 +109,7 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
         Dictionary<string, string> variables) => statement switch
     {
         LetStatement let => InferLetStatement(let, variables),
-        ReturnStatement ret => ret with { Expression = InferExpression(ret.Expression, variables)! },
+        ReturnStatement ret => ret with { Expression = InferExpression(ret.Expression, variables) },
         CStatement c => c with { Expression = InferExpression(c.Expression, variables)! },
         IfStatement ifStatement => ifStatement with
         {
@@ -219,7 +219,7 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
     private static TypeNode? CreateInferredTypeNode(Location location, string type) =>
         string.IsNullOrWhiteSpace(type)
             ? null
-            : TypeNode.Create(location, type);
+            : TypeNode.CreateFromText(location, type);
 
     private ForeachStatement InferForeachStatement(ForeachStatement foreachStatement, Dictionary<string, string> variables)
     {

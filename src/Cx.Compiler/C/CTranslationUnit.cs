@@ -58,7 +58,7 @@ internal sealed record CLocalDeclarationStatement(
     string Declaration,
     CExpression? Initializer) : CStatementNode;
 
-internal sealed record CReturnStatement(CExpression Expression) : CStatementNode;
+internal sealed record CReturnStatement(CExpression? Expression) : CStatementNode;
 
 internal sealed record CBreakStatement : CStatementNode;
 

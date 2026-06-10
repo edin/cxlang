@@ -51,7 +51,7 @@ internal sealed class AstCompletenessAnalyzer(DiagnosticBag diagnostics)
                 case LetStatement let:
                     AnalyzeExpression(let.Initializer);
                     break;
-                case ReturnStatement ret:
+                case ReturnStatement { Expression: not null } ret:
                     AnalyzeExpression(ret.Expression);
                     break;
                 case BreakStatement:

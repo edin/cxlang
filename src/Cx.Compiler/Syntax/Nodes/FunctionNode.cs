@@ -43,8 +43,8 @@ public sealed record FunctionNode(
     private static TypeNode? CreateOwnerTypeNode(Location location, string? ownerType) =>
         string.IsNullOrWhiteSpace(ownerType)
             ? null
-            : TypeNode.Create(location, ownerType);
+            : TypeNode.CreateFromText(location, ownerType);
 
     private static IReadOnlyList<TypeNode> CreateTypeArgumentNodes(Location location, IReadOnlyList<string> typeArguments) =>
-        typeArguments.Select(type => TypeNode.Create(location, type)).ToList();
+        typeArguments.Select(type => TypeNode.CreateFromText(location, type)).ToList();
 }

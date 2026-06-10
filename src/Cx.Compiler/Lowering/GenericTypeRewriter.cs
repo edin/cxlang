@@ -262,7 +262,7 @@ internal static class GenericTypeRewriter
             },
             ReturnStatement ret => ret with
             {
-                Expression = RewriteExpression(ret.Expression, concreteStructNames),
+                Expression = RewriteOptionalExpression(ret.Expression, concreteStructNames),
             },
             CStatement c => c with
             {
@@ -525,7 +525,7 @@ internal static class GenericTypeRewriter
             return null;
         }
 
-        var rewritten = TypeNode.Create(
+        var rewritten = TypeNode.CreateFromText(
             typeNode.Location,
             RewriteConcreteGenericStructTypes(typeNode.TypeName, concreteStructNames));
         SyntaxNode.CloneSemantic(typeNode, rewritten);

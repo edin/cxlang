@@ -31,7 +31,7 @@ public sealed record StructRequirementNode(
         Location Location,
         string Name,
         IReadOnlyList<string> TypeArguments)
-        : this(Location, Name, TypeArguments.Select(type => TypeNode.Create(Location, type)).ToList())
+        : this(Location, Name, TypeArguments.Select(type => TypeNode.CreateFromText(Location, type)).ToList())
     {
     }
 }

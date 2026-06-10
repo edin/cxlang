@@ -115,7 +115,7 @@ internal sealed class ModuleVisibilityAnalyzer(
                     AnalyzeType(let.TypeNode, let.Location, visibility);
                     AnalyzeExpression(let.Initializer, visibility, locals);
                     break;
-                case ReturnStatement returnStatement:
+                case ReturnStatement { Expression: not null } returnStatement:
                     AnalyzeExpression(returnStatement.Expression, visibility, locals);
                     break;
                 case IfStatement ifStatement:

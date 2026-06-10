@@ -168,7 +168,7 @@ internal sealed class TypeResolutionPass(DiagnosticBag diagnostics)
                 ResolveType(let, let.TypeNode);
                 ResolveExpression(let.Initializer);
                 break;
-            case ReturnStatement ret:
+            case ReturnStatement { Expression: not null } ret:
                 ResolveExpression(ret.Expression);
                 break;
             case CStatement c:
@@ -354,7 +354,7 @@ internal sealed class TypeResolutionPass(DiagnosticBag diagnostics)
             && unresolved.ExpressionCandidate is NameExpressionNode name
             && name.Semantic.Symbol is null or { Kind: SymbolKind.Type })
         {
-            var typeNode = TypeNode.Create(unresolved.Location, unresolved.SourceText);
+            var typeNode = TypeNode.CreateFromText(unresolved.Location, unresolved.SourceText);
             sizeOf.TypeOperandNode = typeNode;
             sizeOf.ExpressionOperand = null;
             sizeOf.OperandNode = new SizeOfTypeOperandNode(typeNode.Location, typeNode.TypeName, typeNode);

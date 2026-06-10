@@ -479,7 +479,7 @@ public sealed class RequirementMatcher
                     field.Location,
                     field.Name,
                     field.Attributes,
-                    TypeNode.Create(field.Location, substitutedType));
+                    TypeNode.CreateFromText(field.Location, substitutedType));
             })
             .ToList();
 

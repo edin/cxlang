@@ -120,5 +120,5 @@ public sealed class CTypeLowererTests
     }
 
     private static TypeNode Type(string type) =>
-        TypeNode.Create(new Location(new SourceFile("test.cx", string.Empty), 0, 1, 1), type);
+        TypeNode.CreateFromText(new Location(new SourceFile("test.cx", string.Empty), 0, 1, 1), type);
 }

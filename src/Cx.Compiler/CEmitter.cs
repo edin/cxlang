@@ -401,7 +401,7 @@ public sealed partial class CEmitter
         int rawIndentLevel) => statement switch
     {
         LetStatement let => ToCLocalDeclaration(let, nameLowerer),
-        ReturnStatement ret => new CReturnStatement(nameLowerer.LowerExpression(ret.Expression)),
+        ReturnStatement ret => new CReturnStatement(ret.Expression is null ? null : nameLowerer.LowerExpression(ret.Expression)),
         BreakStatement => new CBreakStatement(),
         ContinueStatement => new CContinueStatement(),
         CStatement c => new CExpressionStatement(nameLowerer.LowerExpression(c.Expression)),
@@ -1312,7 +1312,7 @@ public sealed partial class CEmitter
                         yield return expression;
                     }
                     break;
-                case ReturnStatement ret:
+                case ReturnStatement { Expression: not null } ret:
                     foreach (var expression in EnumerateExpressionNodes(ret.Expression))
                     {
                         yield return expression;
@@ -1714,7 +1714,9 @@ public sealed partial class CEmitter
                 break;
             case ReturnStatement ret:
                 AppendIndent(builder, indentLevel);
-                builder.AppendLine($"return {nameLowerer.Lower(ret.Expression)};");
+                builder.AppendLine(ret.Expression is null
+                    ? "return;"
+                    : $"return {nameLowerer.Lower(ret.Expression)};");
                 break;
             case BreakStatement:
                 AppendIndent(builder, indentLevel);

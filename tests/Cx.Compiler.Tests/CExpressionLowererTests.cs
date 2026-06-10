@@ -37,12 +37,12 @@ public sealed class CExpressionLowererTests
             location,
             "(Vec<int>*)value",
             new NameExpressionNode(location, "value"),
-            TypeNode.Create(location, "Vec<int>*")));
+            TypeNode.CreateFromText(location, "Vec<int>*")));
         var sizeOf = lowerer.LowerSimple(new SizeOfExpressionNode(
             location,
             "sizeof(Vec<int>)",
             ExpressionOperand: null,
-            TypeNode.Create(location, "Vec<int>")));
+            TypeNode.CreateFromText(location, "Vec<int>")));
 
         Assert.Equal("lowered_Vec<int>*", Assert.IsType<CCastExpression>(cast).TargetType);
         Assert.Equal("lowered_Vec<int>", Assert.IsType<CSizeOfTypeExpression>(sizeOf).TypeName);
@@ -91,7 +91,7 @@ public sealed class CExpressionLowererTests
             "Point { x: 1 }",
             [new InitializerFieldNode("x", new LiteralExpressionNode(location, "1"))],
             [],
-            TypeNode.Create(location, "Point")));
+            TypeNode.CreateFromText(location, "Point")));
         var assignment = lowerer.LowerSimple(new AssignmentExpressionNode(
             location,
             "value = 1",

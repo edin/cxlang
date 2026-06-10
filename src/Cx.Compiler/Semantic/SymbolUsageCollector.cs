@@ -117,7 +117,7 @@ internal sealed class SymbolUsageCollector
                     }
 
                     break;
-                case ReturnStatement ret:
+                case ReturnStatement { Expression: not null } ret:
                     CollectExpression(ret.Expression, builder);
                     break;
                 case CStatement c:

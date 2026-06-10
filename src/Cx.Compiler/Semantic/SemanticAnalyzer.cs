@@ -13,19 +13,14 @@ public sealed class SemanticAnalyzer(
     private ExpressionTypeResolver? _expressionTypeResolver;
     private TypeCompatibility? _typeCompatibility;
     private TypeRefParser? _typeRefParser;
+    private TypeUsageAnalyzer? _typeUsageAnalyzer;
+    private AssignmentSemanticAnalyzer? _assignmentAnalyzer;
+    private ReturnSemanticAnalyzer? _returnAnalyzer;
+    private MatchSemanticAnalyzer? _matchAnalyzer;
+    private ForeachSemanticAnalyzer? _foreachAnalyzer;
     private ProgramNode? _program;
     private IReadOnlyList<string> _currentTypeParameters = [];
     private IReadOnlyList<GenericConstraintNode> _currentGenericConstraints = [];
-
-    private enum LocalMutability
-    {
-        Mutable,
-        Const,
-        ConstGlobal,
-        ForeachIndex,
-        ForeachKey,
-        ForeachConstItem,
-    }
 
     public void Analyze(ProgramNode program)
     {
@@ -35,17 +30,37 @@ public sealed class SemanticAnalyzer(
         _expressionTypeResolver = new ExpressionTypeResolver(program);
         _typeRefParser = new TypeRefParser(program);
         _typeCompatibility = new TypeCompatibility(_typeRefParser);
-        AnalyzeAttributes(program);
+        _assignmentAnalyzer = CreateAssignmentAnalyzer(program);
+        _returnAnalyzer = CreateReturnAnalyzer();
+        _matchAnalyzer = CreateMatchAnalyzer(program);
+        _foreachAnalyzer = CreateForeachAnalyzer();
+        _typeUsageAnalyzer = new TypeUsageAnalyzer(
+            diagnostics,
+            program,
+            _requirementMatcher,
+            TypeText,
+            IsKnownTypeName,
+            FindAliasSuggestionForType,
+            FindPartialImportSuggestionForType,
+            FindImportSuggestionForType);
+        var requirementDeclarations = new RequirementDeclarationAnalyzer(
+            diagnostics,
+            program,
+            _requirementMatcher,
+            TypeText);
+        new AttributeSemanticAnalyzer(diagnostics).Analyze(
+            program,
+            (typeNode, location, inScopeTypeParameters) => AnalyzeType(typeNode, location, program, inScopeTypeParameters));
 
         foreach (var structNode in program.Structs)
         {
-            AnalyzeGenericConstraints(structNode.TypeParameters, structNode.GenericConstraints, structNode.Location);
+            requirementDeclarations.AnalyzeGenericConstraints(structNode.TypeParameters, structNode.GenericConstraints, structNode.Location);
             foreach (var field in structNode.Fields)
             {
                 AnalyzeType(field.TypeNode, field.Location, program, structNode.TypeParameters);
             }
 
-            AnalyzeStructRequirements(structNode);
+            requirementDeclarations.AnalyzeStructRequirements(structNode);
         }
 
         var globalVariables = program.GlobalVariables
@@ -64,7 +79,7 @@ public sealed class SemanticAnalyzer(
                 diagnostics.Report(global.Location, $"Cannot assign null to non-pointer global '{global.Name}' of type '{globalType}'.");
             }
 
-            CheckAssignmentCompatibility(
+            _assignmentAnalyzer?.CheckAssignmentCompatibility(
                 global.Location,
                 globalType,
                 global.Initializer,
@@ -75,7 +90,7 @@ public sealed class SemanticAnalyzer(
         foreach (var function in program.Functions)
         {
             var effectiveGenericConstraints = GetEffectiveGenericConstraints(program, function);
-            AnalyzeGenericConstraints(function.TypeParameters, effectiveGenericConstraints, function.Location);
+            requirementDeclarations.AnalyzeGenericConstraints(function.TypeParameters, effectiveGenericConstraints, function.Location);
             AnalyzeType(function.ReturnTypeNode, function.Location, program, function.TypeParameters);
             var variables = new Dictionary<string, string>(globalVariables, StringComparer.Ordinal);
             foreach (var parameter in function.Parameters.Where(parameter => !parameter.IsVariadic))
@@ -108,6 +123,10 @@ public sealed class SemanticAnalyzer(
             _currentTypeParameters = function.TypeParameters;
             _currentGenericConstraints = effectiveGenericConstraints;
             _expressionTypeResolver = new ExpressionTypeResolver(program, _currentTypeParameters, _currentGenericConstraints);
+            _assignmentAnalyzer = CreateAssignmentAnalyzer(program);
+            _returnAnalyzer = CreateReturnAnalyzer();
+            _matchAnalyzer = CreateMatchAnalyzer(program);
+            _foreachAnalyzer = CreateForeachAnalyzer();
 
             var functionReturnType = function.ReturnTypeNode?.Semantic.Type ?? ParseTypeRef(TypeText(function.ReturnTypeNode));
             AnalyzeStatements(function.Body, functionReturnType, variables, mutability, program, function.TypeParameters);
@@ -115,159 +134,16 @@ public sealed class SemanticAnalyzer(
             _currentTypeParameters = previousTypeParameters;
             _currentGenericConstraints = previousGenericConstraints;
             _expressionTypeResolver = new ExpressionTypeResolver(program, _currentTypeParameters, _currentGenericConstraints);
+            _assignmentAnalyzer = CreateAssignmentAnalyzer(program);
+            _returnAnalyzer = CreateReturnAnalyzer();
+            _matchAnalyzer = CreateMatchAnalyzer(program);
+            _foreachAnalyzer = CreateForeachAnalyzer();
             definiteAssignment.AnalyzeFunction(function, globalVariables);
             if (!IsVoidType(functionReturnType) && !returnFlow.StatementsAlwaysReturn(function.Body, variables))
             {
                 diagnostics.Report(
                     function.Location,
                     $"Not all code paths return a value from function '{GetFunctionDisplayName(function)}' returning '{FormatTypeRef(functionReturnType)}'.");
-            }
-        }
-    }
-
-    private void AnalyzeAttributes(ProgramNode program)
-    {
-        var declarations = BuiltInAttributeDeclarations()
-            .Concat(program.AttributeDeclarations)
-            .GroupBy(attribute => attribute.Name, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
-
-        foreach (var group in program.AttributeDeclarations.GroupBy(attribute => attribute.Name, StringComparer.Ordinal))
-        {
-            if (group.Count() > 1)
-            {
-                diagnostics.Report(group.Last().Location, $"Attribute '{group.Key}' is declared more than once.");
-            }
-        }
-
-        foreach (var declaration in program.AttributeDeclarations)
-        {
-            foreach (var field in declaration.Fields)
-            {
-                AnalyzeType(field.TypeNode, field.Location, program, []);
-            }
-        }
-
-        foreach (var typeAlias in program.TypeAliases)
-        {
-            AnalyzeAttributeApplications(typeAlias.Attributes, "type_alias", declarations);
-        }
-
-        foreach (var externFunction in program.ExternFunctions)
-        {
-            AnalyzeAttributeApplications(externFunction.Attributes, "extern", declarations);
-            foreach (var parameter in externFunction.Parameters)
-            {
-                AnalyzeAttributeApplications(parameter.Attributes, "parameter", declarations);
-            }
-        }
-
-        foreach (var global in program.GlobalVariables)
-        {
-            AnalyzeAttributeApplications(global.Attributes, "global", declarations);
-        }
-
-        foreach (var enumNode in program.Enums)
-        {
-            AnalyzeAttributeApplications(enumNode.Attributes, "enum", declarations);
-            foreach (var member in enumNode.Members)
-            {
-                AnalyzeAttributeApplications(member.Attributes, "variant", declarations);
-            }
-        }
-
-        foreach (var structNode in program.Structs)
-        {
-            AnalyzeAttributeApplications(structNode.Attributes, "struct", declarations);
-            foreach (var field in structNode.Fields)
-            {
-                AnalyzeAttributeApplications(field.Attributes, "field", declarations);
-            }
-
-        }
-
-        foreach (var taggedUnion in program.TaggedUnions)
-        {
-            AnalyzeAttributeApplications(taggedUnion.Attributes, "union", declarations);
-            foreach (var variant in taggedUnion.Variants)
-            {
-                AnalyzeAttributeApplications(variant.Attributes, "variant", declarations);
-            }
-
-        }
-
-        foreach (var function in program.Functions)
-        {
-            AnalyzeFunctionAttributes(function, declarations);
-        }
-    }
-
-    private void AnalyzeFunctionAttributes(
-        FunctionNode function,
-        IReadOnlyDictionary<string, AttributeDeclarationNode> declarations)
-    {
-        AnalyzeAttributeApplications(function.Attributes, "fn", declarations);
-        foreach (var parameter in function.Parameters)
-        {
-            AnalyzeAttributeApplications(parameter.Attributes, "parameter", declarations);
-        }
-    }
-
-    private void AnalyzeAttributeApplications(
-        IReadOnlyList<AttributeApplicationNode> applications,
-        string target,
-        IReadOnlyDictionary<string, AttributeDeclarationNode> declarations)
-    {
-        foreach (var duplicate in applications
-            .GroupBy(attribute => attribute.Name, StringComparer.Ordinal)
-            .Where(group => group.Count() > 1))
-        {
-            diagnostics.Report(duplicate.Last().Location, $"Attribute '{duplicate.Key}' cannot be applied more than once.");
-        }
-
-        foreach (var application in applications)
-        {
-            if (!declarations.TryGetValue(application.Name, out var declaration))
-            {
-                diagnostics.Report(application.Location, $"Unknown attribute '{application.Name}'.");
-                continue;
-            }
-
-            if (!declaration.Targets.Contains(target, StringComparer.Ordinal))
-            {
-                diagnostics.Report(application.Location, $"Attribute '{application.Name}' cannot be applied to {target}.");
-            }
-
-            if (application.Name == "derive")
-            {
-                continue;
-            }
-
-            var namedArguments = application.Arguments.Where(argument => argument.Name is not null).ToList();
-            foreach (var argument in namedArguments)
-            {
-                if (!declaration.Fields.Any(field => field.Name == argument.Name))
-                {
-                    diagnostics.Report(argument.Location, $"Attribute '{application.Name}' has no field named '{argument.Name}'.");
-                }
-            }
-
-            if (namedArguments.Count > 0)
-            {
-                foreach (var field in declaration.Fields)
-                {
-                    if (!namedArguments.Any(argument => argument.Name == field.Name))
-                    {
-                        diagnostics.Report(application.Location, $"Attribute '{application.Name}' requires argument '{field.Name}'.");
-                    }
-                }
-
-                continue;
-            }
-
-            if (application.Arguments.Count != declaration.Fields.Count)
-            {
-                diagnostics.Report(application.Location, $"Attribute '{application.Name}' expects {declaration.Fields.Count} argument(s).");
             }
         }
     }
@@ -292,111 +168,42 @@ public sealed class SemanticAnalyzer(
         return constraints;
     }
 
-    private static IReadOnlyList<AttributeDeclarationNode> BuiltInAttributeDeclarations() =>
-    [
-        new AttributeDeclarationNode(
-            new Cx.Compiler.Syntax.Location(new Cx.Compiler.Syntax.SourceFile("<built-in>", ""), 0, 1, 1),
-            "derive",
-            ["struct", "union", "enum"],
-            [])
-    ];
+    private AssignmentSemanticAnalyzer? CreateAssignmentAnalyzer(ProgramNode program) =>
+        _expressionTypeResolver is null || _typeCompatibility is null || _typeSystem is null || _typeRefParser is null
+            ? null
+            : new AssignmentSemanticAnalyzer(
+                diagnostics,
+                program,
+                _expressionTypeResolver,
+                _typeCompatibility,
+                _typeSystem,
+                _typeRefParser,
+                TypeText);
 
-    private void AnalyzeGenericConstraints(
-        IReadOnlyList<string> typeParameters,
-        IReadOnlyList<GenericConstraintNode> constraints,
-        Cx.Compiler.Syntax.Location location)
-    {
-        foreach (var constraint in constraints)
-        {
-            if (!typeParameters.Contains(constraint.TypeParameter, StringComparer.Ordinal))
-            {
-                diagnostics.Report(
-                    constraint.Location,
-                    $"Unknown generic type parameter '{constraint.TypeParameter}' in where clause.");
-            }
+    private ReturnSemanticAnalyzer? CreateReturnAnalyzer() =>
+        _assignmentAnalyzer is null
+            ? null
+            : new ReturnSemanticAnalyzer(diagnostics, _assignmentAnalyzer);
 
-            foreach (var requirement in constraint.Requirements)
-            {
-                AnalyzeRequirementReference(requirement, allowInferredTypeArguments: false);
-            }
-        }
-    }
+    private MatchSemanticAnalyzer? CreateMatchAnalyzer(ProgramNode program) =>
+        _expressionTypeResolver is null
+            ? null
+            : new MatchSemanticAnalyzer(
+                diagnostics,
+                program,
+                _expressionTypeResolver,
+                TypeText,
+                IsKnownTypeName);
 
-    private void AnalyzeStructRequirements(StructNode structNode)
-    {
-        foreach (var requirement in structNode.Requirements)
-        {
-            AnalyzeRequirementReference(requirement, allowInferredTypeArguments: true);
-            var selfType = GetStructSelfType(structNode);
-            var arguments = TypeArguments(requirement.TypeArgumentNodes).Count > 0
-                ? TypeArguments(requirement.TypeArgumentNodes)
-                : structNode.TypeParameters;
-            var match = _requirementMatcher?.Match(selfType, requirement.Name, arguments);
-            if (match is null || match.Success)
-            {
-                continue;
-            }
-
-            diagnostics.Report(
-                requirement.Location,
-                $"Struct '{selfType}' declares '{FormatRequirementReference(requirement)}' but does not satisfy it: {FormatRequirementFailures(match.Failures)}");
-        }
-    }
-
-    private void AnalyzeRequirementReference(
-        StructRequirementNode reference,
-        bool allowInferredTypeArguments)
-    {
-        if (_program is null)
-        {
-            return;
-        }
-
-        var requirement = _program.Requirements.FirstOrDefault(requirement =>
-            string.Equals(requirement.Name, reference.Name, StringComparison.Ordinal));
-        if (requirement is not null)
-        {
-            var typeArguments = TypeArguments(reference.TypeArgumentNodes);
-            if (typeArguments.Count > 0
-                && typeArguments.Count != requirement.TypeParameters.Count)
-            {
-                diagnostics.Report(
-                    reference.Location,
-                    $"Requirement '{reference.Name}' expects {requirement.TypeParameters.Count} type argument(s), but {typeArguments.Count} were provided.");
-            }
-            else if (!allowInferredTypeArguments
-                && typeArguments.Count == 0
-                && requirement.TypeParameters.Count > 0)
-            {
-                diagnostics.Report(
-                    reference.Location,
-                    $"Requirement '{reference.Name}' in a where clause needs explicit type arguments: {reference.Name}<{string.Join(", ", requirement.TypeParameters)}>.");
-            }
-
-            return;
-        }
-
-        var interfaceNode = _program.Interfaces.FirstOrDefault(interfaceNode =>
-            string.Equals(interfaceNode.Name, reference.Name, StringComparison.Ordinal));
-        if (interfaceNode is not null)
-        {
-            if (TypeArguments(reference.TypeArgumentNodes).Count > 0)
-            {
-                diagnostics.Report(
-                    reference.Location,
-                    $"Interface '{reference.Name}' does not take type arguments.");
-            }
-
-            return;
-        }
-
-        diagnostics.Report(reference.Location, $"Unknown requirement '{reference.Name}'.");
-    }
-
-    private static string GetStructSelfType(StructNode structNode) =>
-        structNode.TypeParameters.Count == 0
-            ? structNode.Name
-            : $"{structNode.Name}<{string.Join(",", structNode.TypeParameters)}>";
+    private ForeachSemanticAnalyzer? CreateForeachAnalyzer() =>
+        _typeSystem is null || _typeCompatibility is null || _expressionTypeResolver is null
+            ? null
+            : new ForeachSemanticAnalyzer(
+                diagnostics,
+                _typeSystem,
+                _typeCompatibility,
+                _expressionTypeResolver,
+                TypeTextOrNull);
 
     private void AnalyzeStatements(
         IReadOnlyList<StatementNode> statements,
@@ -431,36 +238,13 @@ public sealed class SemanticAnalyzer(
                     diagnostics.Report(let.Location, $"Cannot assign null to non-pointer type '{letType}'.");
                 }
 
-                CheckAssignmentCompatibility(let.Location, letType, let.Initializer, variables, $"local '{let.Name}'");
+                _assignmentAnalyzer?.CheckAssignmentCompatibility(let.Location, letType, let.Initializer, variables, $"local '{let.Name}'");
                 variables[let.Name] = letType;
                 mutability[let.Name] = let.IsConst ? LocalMutability.Const : LocalMutability.Mutable;
                 break;
 
             case ReturnStatement ret:
-                if (IsVoidType(returnType))
-                {
-                    if (!IsEmptyExpression(ret.Expression))
-                    {
-                        AnalyzeExpression(ret.Expression, ret.Location, variables, mutability);
-                        diagnostics.Report(ret.Location, "Cannot return a value from function returning void.");
-                    }
-
-                    break;
-                }
-
-                if (IsEmptyExpression(ret.Expression))
-                {
-                    diagnostics.Report(ret.Location, $"Function returning '{FormatTypeRef(returnType)}' must return a value.");
-                    break;
-                }
-
-                AnalyzeExpression(ret.Expression, ret.Location, variables, mutability);
-                if (IsBareNull(ret.Expression) && !IsNullableType(returnType))
-                {
-                    diagnostics.Report(ret.Location, $"Cannot return null from function returning non-pointer type '{FormatTypeRef(returnType)}'.");
-                }
-
-                CheckAssignmentCompatibility(ret.Location, returnType, ret.Expression, variables, "return value");
+                _returnAnalyzer?.AnalyzeReturn(ret, returnType, variables, mutability, AnalyzeExpression);
                 break;
 
             case CStatement c:
@@ -521,80 +305,11 @@ public sealed class SemanticAnalyzer(
 
             case ForeachStatement foreachStatement:
                 AnalyzeExpression(foreachStatement.IterableExpression, foreachStatement.Location, variables, mutability);
-                var foreachVariables = new Dictionary<string, string>(variables, StringComparer.Ordinal);
-                var foreachMutability = new Dictionary<string, LocalMutability>(mutability, StringComparer.Ordinal);
-                var iterableExpression = ExpressionText(foreachStatement.IterableExpression);
-                if (foreachStatement.IterableExpression is ScalarRangeExpressionNode rangeExpression)
-                {
-                    if (foreachStatement.KeyBinding is not null)
-                    {
-                        diagnostics.Report(foreachStatement.Location, "Key/value foreach is not supported for scalar ranges.");
-                    }
-
-                    var rangeType = _expressionTypeResolver?.Resolve(rangeExpression, variables) ?? "int";
-                    AddForeachScalarRangeBindings(foreachStatement, foreachVariables, foreachMutability, rangeType);
-                }
-                else if (!TryResolveVariableType(iterableExpression, variables, out var iterableType))
-                {
-                    diagnostics.Report(
-                        foreachStatement.Location,
-                        $"Cannot resolve foreach iterable '{iterableExpression}'. Use a visible local/global value, fixed array, scalar range like 0..10, or a type satisfying foreach requirements.");
-                }
-                else if (foreachStatement.KeyBinding is not null)
-                {
-                    if (TryResolveForeachTypes(
-                        iterableType,
-                        keyValue: true,
-                        out var keyValueElementType,
-                        out var keyValueKeyType))
-                    {
-                        if (keyValueKeyType is not null)
-                        {
-                            var keyBindingType = TypeTextOrNull(foreachStatement.KeyBinding.TypeNode);
-                            foreachVariables[foreachStatement.KeyBinding.Name] = keyBindingType is null
-                                ? keyValueKeyType
-                                : keyBindingType;
-                            foreachMutability[foreachStatement.KeyBinding.Name] = LocalMutability.ForeachKey;
-                        }
-
-                        AddForeachValueBindings(foreachStatement, foreachVariables, foreachMutability, keyValueElementType);
-                    }
-                    else
-                    {
-                        ReportForeachRequirementFailure(
-                            foreachStatement,
-                            iterableType,
-                            SatisfiesRequirement(iterableType, "Contiguous"));
-                    }
-                }
-                else if (TryParseFixedArrayType(iterableType, out var arrayElementType, out _))
-                {
-                    AddForeachValueBindings(foreachStatement, foreachVariables, foreachMutability, arrayElementType);
-                }
-                else if (TryResolveForeachTypes(
-                    iterableType,
-                    keyValue: false,
-                    out var iteratorElementType,
-                    out _))
-                {
-                    AddForeachValueBindings(foreachStatement, foreachVariables, foreachMutability, iteratorElementType);
-                }
-                else if (SatisfiesRequirement(iterableType, "Contiguous") is { Success: true } contiguous
-                    && contiguous.TypeBindings.TryGetValue("T", out var contiguousElementType))
-                {
-                    AddForeachValueBindings(foreachStatement, foreachVariables, foreachMutability, contiguousElementType);
-                }
-                else if (SatisfiesRequirement(iterableType, "ContiguousRange") is { Success: true } range
-                    && range.TypeBindings.TryGetValue("T", out var rangeElementType))
-                {
-                    AddForeachValueBindings(foreachStatement, foreachVariables, foreachMutability, rangeElementType);
-                }
-                else if (SatisfiesRequirement(iterableType, "Contiguous") is { } match && !match.Success)
-                {
-                    ReportForeachRequirementFailure(foreachStatement, iterableType, match);
-                }
-
-                AnalyzeStatements(foreachStatement.Body, returnType, foreachVariables, foreachMutability, program, inScopeTypeParameters);
+                var foreachScope = _foreachAnalyzer?.AnalyzeForeach(foreachStatement, variables, mutability)
+                    ?? new ForeachAnalysisResult(
+                        new Dictionary<string, string>(variables, StringComparer.Ordinal),
+                        new Dictionary<string, LocalMutability>(mutability, StringComparer.Ordinal));
+                AnalyzeStatements(foreachStatement.Body, returnType, foreachScope.Variables, foreachScope.Mutability, program, inScopeTypeParameters);
                 break;
 
             case SwitchStatement switchStatement:
@@ -622,43 +337,14 @@ public sealed class SemanticAnalyzer(
 
             case MatchStatement matchStatement:
                 AnalyzeExpression(matchStatement.Expression, matchStatement.Location, variables, mutability);
-                var matchExpressionType = _expressionTypeResolver?.Resolve(matchStatement.Expression, variables);
-                TaggedUnionNode? matchedTaggedUnion = null;
-                InterfaceNode? matchedInterface = null;
-                if (matchExpressionType is not null
-                    && _program?.TaggedUnions.FirstOrDefault(union => union.Name == StripPointer(ResolveAlias(matchExpressionType))) is { IsRaw: true })
+                foreach (var armBinding in _matchAnalyzer?.AnalyzeMatch(matchStatement, variables) ?? [])
                 {
-                    diagnostics.Report(matchStatement.Location, $"Cannot pattern match raw union type '{matchExpressionType}'.");
-                }
-                else if (ResolveMatchedTaggedUnion(matchStatement, variables) is { } taggedUnion)
-                {
-                    matchedTaggedUnion = taggedUnion;
-                    AnalyzeMatchExhaustiveness(matchStatement, taggedUnion);
-                }
-                else if (ResolveMatchedInterface(matchStatement, variables) is { } interfaceNode)
-                {
-                    matchedInterface = interfaceNode;
-                    AnalyzeInterfaceMatchArms(matchStatement, interfaceNode);
-                }
-
-                foreach (var arm in matchStatement.Arms)
-                {
+                    var arm = armBinding.Arm;
                     var armVariables = new Dictionary<string, string>(variables, StringComparer.Ordinal);
                     var armMutability = new Dictionary<string, LocalMutability>(mutability, StringComparer.Ordinal);
-                    if (matchedTaggedUnion is not null
-                        && arm.BindingName is not null
-                    && arm.Pattern != "_"
-                    && matchedTaggedUnion.Variants.FirstOrDefault(variant => variant.Name == arm.Pattern) is { } variant)
-                {
-                    armVariables[arm.BindingName] = TypeText(variant.TypeNode);
-                    armMutability[arm.BindingName] = LocalMutability.Mutable;
-                }
-                    else if (matchedInterface is not null
-                        && arm.BindingName is not null
-                        && arm.Pattern != "_"
-                        && InterfaceImplementationExists(arm.Pattern, matchedInterface.Name))
+                    if (arm.BindingName is not null && armBinding.Type is not null)
                     {
-                        armVariables[arm.BindingName] = arm.Pattern + "*";
+                        armVariables[arm.BindingName] = armBinding.Type;
                         armMutability[arm.BindingName] = LocalMutability.Mutable;
                     }
 
@@ -668,279 +354,6 @@ public sealed class SemanticAnalyzer(
                 break;
         }
     }
-
-    private void AnalyzeMatchExhaustiveness(MatchStatement matchStatement, TaggedUnionNode taggedUnion)
-    {
-        var variantNames = taggedUnion.Variants
-            .Select(variant => variant.Name)
-            .ToHashSet(StringComparer.Ordinal);
-        var seenPatterns = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var arm in matchStatement.Arms)
-        {
-            if (arm.Pattern == "_")
-            {
-                continue;
-            }
-
-            if (!variantNames.Contains(arm.Pattern))
-            {
-                diagnostics.Report(
-                    arm.Location,
-                    $"Unknown match arm '{arm.Pattern}' for union '{taggedUnion.Name}'.");
-                continue;
-            }
-
-            if (!seenPatterns.Add(arm.Pattern))
-            {
-                diagnostics.Report(
-                    arm.Location,
-                    $"Duplicate match arm '{arm.Pattern}' for union '{taggedUnion.Name}'.");
-            }
-        }
-
-        if (IsMatchExhaustive(matchStatement, taggedUnion))
-        {
-            return;
-        }
-
-        var covered = matchStatement.Arms
-            .Select(arm => arm.Pattern)
-            .ToHashSet(StringComparer.Ordinal);
-        var missing = taggedUnion.Variants
-            .Select(variant => variant.Name)
-            .Where(variantName => !covered.Contains(variantName))
-            .ToList();
-        diagnostics.Report(
-            matchStatement.Location,
-            $"Match on union '{taggedUnion.Name}' is not exhaustive. Missing variants: {string.Join(", ", missing)}.");
-    }
-
-    private static bool IsMatchExhaustive(MatchStatement matchStatement, TaggedUnionNode? taggedUnion)
-    {
-        if (matchStatement.Arms.Any(arm => arm.Pattern == "_"))
-        {
-            return true;
-        }
-
-        if (taggedUnion is null)
-        {
-            return false;
-        }
-
-        var covered = matchStatement.Arms
-            .Select(arm => arm.Pattern)
-            .ToHashSet(StringComparer.Ordinal);
-        return taggedUnion.Variants.All(variant => covered.Contains(variant.Name));
-    }
-
-    private TaggedUnionNode? ResolveMatchedTaggedUnion(
-        MatchStatement matchStatement,
-        IReadOnlyDictionary<string, string> variables)
-    {
-        var matchExpressionType = _expressionTypeResolver?.Resolve(matchStatement.Expression, variables);
-        if (matchExpressionType is null || _program is null)
-        {
-            return null;
-        }
-
-        var normalizedType = StripPointer(ResolveAlias(matchExpressionType));
-        return _program.TaggedUnions.FirstOrDefault(union =>
-            string.Equals(union.Name, normalizedType, StringComparison.Ordinal));
-    }
-
-    private InterfaceNode? ResolveMatchedInterface(
-        MatchStatement matchStatement,
-        IReadOnlyDictionary<string, string> variables)
-    {
-        var matchExpressionType = _expressionTypeResolver?.Resolve(matchStatement.Expression, variables);
-        if (matchExpressionType is null || _program is null)
-        {
-            return null;
-        }
-
-        var normalizedType = StripPointer(ResolveAlias(matchExpressionType));
-        return _program.Interfaces.FirstOrDefault(interfaceNode =>
-            string.Equals(interfaceNode.Name, normalizedType, StringComparison.Ordinal));
-    }
-
-    private void AnalyzeInterfaceMatchArms(MatchStatement matchStatement, InterfaceNode interfaceNode)
-    {
-        var seenPatterns = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var arm in matchStatement.Arms)
-        {
-            if (arm.Pattern == "_")
-            {
-                continue;
-            }
-
-            if (!InterfaceImplementationExists(arm.Pattern, interfaceNode.Name))
-            {
-                var message = IsKnownTypeName(arm.Pattern)
-                    ? $"Type '{arm.Pattern}' does not implement interface '{interfaceNode.Name}'."
-                    : $"Unknown match arm '{arm.Pattern}' for interface '{interfaceNode.Name}'.";
-                diagnostics.Report(
-                    arm.Location,
-                    message);
-                continue;
-            }
-
-            if (!seenPatterns.Add(arm.Pattern))
-            {
-                diagnostics.Report(
-                    arm.Location,
-                    $"Duplicate match arm '{arm.Pattern}' for interface '{interfaceNode.Name}'.");
-            }
-        }
-    }
-
-    private bool InterfaceImplementationExists(string structName, string interfaceName) =>
-        _program?.Structs.Any(structNode =>
-            string.Equals(structNode.Name, structName, StringComparison.Ordinal)
-            && structNode.Requirements.Any(requirement =>
-                string.Equals(requirement.Name, interfaceName, StringComparison.Ordinal))) == true;
-
-    private void AddForeachValueBindings(
-        ForeachStatement foreachStatement,
-        Dictionary<string, string> variables,
-        Dictionary<string, LocalMutability> mutability,
-        string elementType)
-    {
-        if (foreachStatement.IndexBinding is { } indexBinding)
-        {
-            var declaredIndexType = TypeTextOrNull(indexBinding.TypeNode);
-            var indexType = declaredIndexType is null
-                ? "usize"
-                : declaredIndexType;
-            variables[indexBinding.Name] = indexType;
-            mutability[indexBinding.Name] = LocalMutability.ForeachIndex;
-        }
-
-        var valueBindingType = TypeTextOrNull(foreachStatement.ValueBinding.TypeNode);
-        var declaredElementType = valueBindingType is null
-            ? elementType
-            : valueBindingType;
-        if (valueBindingType is not null
-            && _typeCompatibility is not null
-            && !_typeCompatibility.CanAssign(valueBindingType, elementType, out var reason))
-        {
-            diagnostics.Report(
-                foreachStatement.ValueBinding.Location,
-                $"Type mismatch for foreach value '{foreachStatement.ValueBinding.Name}': {reason}.");
-        }
-
-        variables[foreachStatement.ValueBinding.Name] = declaredElementType;
-        mutability[foreachStatement.ValueBinding.Name] = foreachStatement.ValueBinding.IsConst
-            ? LocalMutability.ForeachConstItem
-            : LocalMutability.Mutable;
-    }
-
-    private void AddForeachScalarRangeBindings(
-        ForeachStatement foreachStatement,
-        Dictionary<string, string> variables,
-        Dictionary<string, LocalMutability> mutability,
-        string elementType)
-    {
-        if (foreachStatement.IndexBinding is { } indexBinding)
-        {
-            var declaredIndexType = TypeTextOrNull(indexBinding.TypeNode);
-            variables[indexBinding.Name] = declaredIndexType is null
-                ? "usize"
-                : declaredIndexType;
-            mutability[indexBinding.Name] = LocalMutability.ForeachIndex;
-        }
-
-        var declaredValueType = TypeTextOrNull(foreachStatement.ValueBinding.TypeNode);
-        var declaredElementType = declaredValueType is null
-            ? elementType
-            : declaredValueType;
-        variables[foreachStatement.ValueBinding.Name] = declaredElementType;
-        mutability[foreachStatement.ValueBinding.Name] = foreachStatement.ValueBinding.IsConst
-            ? LocalMutability.ForeachConstItem
-            : LocalMutability.Mutable;
-    }
-
-    private bool TryResolveForeachTypes(
-        string iterableType,
-        bool keyValue,
-        out string valueType,
-        out string? keyType)
-    {
-        valueType = string.Empty;
-        keyType = null;
-        return _typeSystem?.TryResolveForeachTypes(iterableType, keyValue, out valueType, out keyType) == true;
-    }
-
-    private void ReportForeachRequirementFailure(
-        ForeachStatement foreachStatement,
-        string iterableType,
-        RequirementMatch contiguousMatch)
-    {
-        if (_typeSystem is null)
-        {
-            diagnostics.Report(
-                foreachStatement.Location,
-                $"Type '{iterableType}' cannot be used in foreach.");
-            return;
-        }
-
-        var keyValue = foreachStatement.KeyBinding is not null;
-        var iterableRequirementName = keyValue ? "KeyValueIterable" : "Iterable";
-        var iteratorRequirementName = keyValue ? "KeyValueIterator" : "Iterator";
-        var iterableRequirementDisplay = keyValue ? "KeyValueIterable<K, V, I>" : "Iterable<T, I>";
-        var rangeMatch = SatisfiesRequirement(iterableType, "ContiguousRange");
-        var iteratorMatch = SatisfiesRequirement(iterableType, iterableRequirementName);
-        var parts = new List<string>
-        {
-            $"Type '{iterableType}' cannot be used in foreach.",
-            keyValue
-                ? "Expected key/value foreach source: KeyValueIterable<K, V, I> where I: KeyValueIterator<K, V>."
-                : "Expected foreach source: fixed array, scalar range, Iterable<T, I> where I: Iterator<T>, Contiguous<T>, or ContiguousRange<T>.",
-        };
-
-        if (!iteratorMatch.Success)
-        {
-            parts.Add($"{iterableRequirementDisplay}: " + FormatRequirementFailures(iteratorMatch.Failures));
-        }
-        else if (!iteratorMatch.TypeBindings.TryGetValue("I", out var iteratorType))
-        {
-            parts.Add($"{iterableRequirementDisplay}: could not infer iterator type 'I' from iterator().");
-        }
-        else
-        {
-            var concreteIteratorMatch = SatisfiesRequirement(iteratorType, iteratorRequirementName);
-            if (!concreteIteratorMatch.Success)
-            {
-                parts.Add($"{iteratorType} must satisfy {iteratorRequirementName}: {FormatRequirementFailures(concreteIteratorMatch.Failures)}");
-            }
-        }
-
-        if (contiguousMatch.Failures.Count > 0)
-        {
-            parts.Add("Contiguous<T>: " + FormatRequirementFailures(contiguousMatch.Failures));
-        }
-
-        if (rangeMatch.Failures.Count > 0)
-        {
-            parts.Add("ContiguousRange<T>: " + FormatRequirementFailures(rangeMatch.Failures));
-        }
-
-        parts.Add(keyValue
-            ? "Add iterator(self: Self*) plus next/key/value methods, or use 'foreach item in source' for value iteration."
-            : "Add iterator(self: Self*) with next/value methods, data/length fields, or start/end fields.");
-
-        diagnostics.Report(foreachStatement.Location, string.Join(" ", parts));
-    }
-
-    private static string FormatRequirementFailures(IReadOnlyList<string> failures) =>
-        failures.Count == 0
-            ? "no details available."
-            : string.Join(" ", failures.Select(failure => failure.Trim()));
-
-    private string FormatRequirementReference(StructRequirementNode requirement) =>
-        TypeArguments(requirement.TypeArgumentNodes).Count == 0
-            ? requirement.Name
-            : $"{requirement.Name}<{string.Join(", ", TypeArguments(requirement.TypeArgumentNodes))}>";
 
     private RequirementMatch SatisfiesRequirement(
         string concreteType,
@@ -960,9 +373,6 @@ public sealed class SemanticAnalyzer(
     private static bool IsVoidType(TypeRef? type) =>
         UnwrapAlias(type) is TypeRef.Named { Name: "void", Arguments.Count: 0 };
 
-    private static bool IsEmptyExpression(ExpressionNode expression) =>
-        string.IsNullOrWhiteSpace(expression.SourceText);
-
     private void AnalyzeType(
         TypeNode? typeNode,
         Cx.Compiler.Syntax.Location location,
@@ -976,71 +386,8 @@ public sealed class SemanticAnalyzer(
         ProgramNode program,
         IReadOnlyList<string> inScopeTypeParameters)
     {
-        foreach (var typeName in FindTypeNames(type)
-            .Where(typeName => !inScopeTypeParameters.Contains(typeName, StringComparer.Ordinal))
-            .Distinct(StringComparer.Ordinal))
-        {
-            if (IsKnownTypeName(typeName))
-            {
-                continue;
-            }
-
-            if (FindAliasSuggestionForType(typeName) is { } aliasSuggestion)
-            {
-                diagnostics.Report(location, $"Unknown type '{typeName}'. Did you mean '{aliasSuggestion}'?");
-            }
-            else if (FindPartialImportSuggestionForType(typeName) is { } partialSuggestion)
-            {
-                diagnostics.Report(location, $"Unknown type '{typeName}'. Did you mean '{partialSuggestion}'?");
-            }
-            else if (FindImportSuggestionForType(typeName) is { } suggestion)
-            {
-                diagnostics.Report(location, $"Unknown type '{typeName}'. Did you mean to import {suggestion}?");
-            }
-        }
-
-        foreach (var use in FindGenericStructUses(type))
-        {
-            var definition = program.Structs.FirstOrDefault(structNode =>
-                structNode.Name == use.Name
-                && structNode.TypeParameters.Count == use.Arguments.Count);
-            if (definition is null || definition.GenericConstraints.Count == 0)
-            {
-                continue;
-            }
-
-            var substitutions = definition.TypeParameters
-                .Zip(use.Arguments)
-                .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
-            foreach (var constraint in definition.GenericConstraints)
-            {
-                if (!substitutions.TryGetValue(constraint.TypeParameter, out var concreteType))
-                {
-                    continue;
-                }
-
-                if (inScopeTypeParameters.Contains(concreteType, StringComparer.Ordinal))
-                {
-                    continue;
-                }
-
-                foreach (var requirement in constraint.Requirements)
-                {
-                    var arguments = TypeArguments(requirement.TypeArgumentNodes)
-                        .Select(argument => GenericTypeStringRewriter.Substitute(argument, substitutions))
-                        .ToList();
-                    var match = _requirementMatcher?.Match(concreteType, requirement.Name, arguments);
-                    if (match is null || match.Success)
-                    {
-                        continue;
-                    }
-
-                    diagnostics.Report(
-                        location,
-                        $"Type '{concreteType}' used for '{definition.Name}.{constraint.TypeParameter}' does not satisfy requirement '{requirement.Name}': {string.Join(" ", match.Failures)}");
-                }
-            }
-        }
+        _ = program;
+        _typeUsageAnalyzer?.Analyze(type, location, inScopeTypeParameters);
     }
 
     private void AnalyzeExpression(
@@ -1120,7 +467,7 @@ public sealed class SemanticAnalyzer(
                         $"Cannot assign null to non-pointer type '{declarationType}'.");
                 }
 
-                CheckAssignmentCompatibility(
+                _assignmentAnalyzer?.CheckAssignmentCompatibility(
                     declaration.Location,
                     declarationType,
                     declaration.Initializer,
@@ -1135,9 +482,6 @@ public sealed class SemanticAnalyzer(
                 break;
         }
     }
-
-    private static bool SameTypeName(string left, string right) =>
-        string.Equals(left.Trim(), right.Trim(), StringComparison.Ordinal);
 
     private IEnumerable<(string Name, string Type)> CollectLocalVariables(IEnumerable<StatementNode> statements)
     {
@@ -1312,102 +656,6 @@ public sealed class SemanticAnalyzer(
         }
     }
 
-    private static bool TryResolveVariableType(
-        string expression,
-        IReadOnlyDictionary<string, string> variables,
-        out string type)
-    {
-        return variables.TryGetValue(expression.Trim(), out type!);
-    }
-
-    private static bool TryParseFixedArrayType(string type, out string elementType, out string length)
-    {
-        elementType = string.Empty;
-        length = string.Empty;
-        type = type.Trim();
-        if (!type.EndsWith("]", StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        var openBracket = type.LastIndexOf('[');
-        if (openBracket < 0)
-        {
-            return false;
-        }
-
-        elementType = type[..openBracket].Trim();
-        length = type[(openBracket + 1)..^1].Trim();
-        return !string.IsNullOrWhiteSpace(elementType) && !string.IsNullOrWhiteSpace(length);
-    }
-
-    private string ResolveAlias(string type)
-    {
-        if (_program is null)
-        {
-            return type;
-        }
-
-        var pointerSuffix = "";
-        type = type.Trim();
-        while (type.EndsWith("*", StringComparison.Ordinal))
-        {
-            pointerSuffix += "*";
-            type = type[..^1].TrimEnd();
-        }
-
-        var aliases = _program.TypeAliases
-            .GroupBy(typeAlias => typeAlias.Name, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => TypeText(group.First().TargetTypeNode), StringComparer.Ordinal);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        while (aliases.TryGetValue(type, out var targetType) && seen.Add(type))
-        {
-            type = targetType;
-        }
-
-        return type + pointerSuffix;
-    }
-
-    private static string StripPointer(string type)
-    {
-        while (type.TrimEnd().EndsWith("*", StringComparison.Ordinal))
-        {
-            type = type.TrimEnd()[..^1];
-        }
-
-        return type.TrimEnd();
-    }
-
-    private static string GetGenericBaseName(string type)
-    {
-        type = type.Trim();
-        var genericStart = type.IndexOf('<', StringComparison.Ordinal);
-        return genericStart < 0
-            ? type
-            : type[..genericStart].Trim();
-    }
-
-    private static bool TryParseGenericUse(string type, out string name, out IReadOnlyList<string> arguments)
-    {
-        name = string.Empty;
-        arguments = [];
-        var genericStart = type.IndexOf('<', StringComparison.Ordinal);
-        var genericEnd = type.LastIndexOf('>');
-        if (genericStart <= 0 || genericEnd < genericStart)
-        {
-            return false;
-        }
-
-        name = type[..genericStart].Trim();
-        arguments = SplitGenericArguments(type[(genericStart + 1)..genericEnd]);
-        return true;
-    }
-
-    private static bool MatchesGenericArguments(
-        IReadOnlyList<string> typeParameters,
-        IReadOnlyList<string> typeArguments) =>
-        typeParameters.Count == typeArguments.Count;
-
     private static string? GetQualifiedName(ExpressionNode expression) => expression switch
     {
         NameExpressionNode name => name.SourceText,
@@ -1415,272 +663,6 @@ public sealed class SemanticAnalyzer(
         MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
         _ => null,
     };
-
-    private static bool TryParseFunctionType(
-        string? type,
-        out IReadOnlyList<string> parameterTypes,
-        out string returnType,
-        out bool isVariadic)
-    {
-        parameterTypes = [];
-        returnType = string.Empty;
-        isVariadic = false;
-        type = type?.Trim() ?? string.Empty;
-        if (!type.StartsWith("fn(", StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        var close = FindMatchingParen(type, 2);
-        if (close < 0 || close + 2 >= type.Length || type[close + 1] != '-' || type[close + 2] != '>')
-        {
-            return false;
-        }
-
-        var parsedParameters = SplitGenericArguments(type[3..close]);
-        isVariadic = parsedParameters.LastOrDefault() == "...";
-        parameterTypes = parsedParameters
-            .Where(parameter => parameter != "...")
-            .ToList();
-        returnType = type[(close + 3)..].Trim();
-        return !string.IsNullOrWhiteSpace(returnType);
-    }
-
-    private static int FindMatchingParen(string text, int openIndex)
-    {
-        var depth = 0;
-        for (var i = openIndex; i < text.Length; i++)
-        {
-            if (text[i] == '(')
-            {
-                depth++;
-                continue;
-            }
-
-            if (text[i] != ')')
-            {
-                continue;
-            }
-
-            depth--;
-            if (depth == 0)
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    private void AnalyzeAssignmentExpression(
-        AssignmentExpressionNode assignment,
-        IReadOnlyDictionary<string, string> variables,
-        IReadOnlyDictionary<string, LocalMutability>? mutability)
-    {
-        if (_expressionTypeResolver is null || _typeCompatibility is null)
-        {
-            return;
-        }
-
-        AnalyzeAssignmentMutability(assignment, mutability);
-
-        var targetTypeRef = _expressionTypeResolver.ResolveTypeRef(assignment.Target, variables);
-        if (targetTypeRef is null)
-        {
-            return;
-        }
-
-        var targetType = FormatTypeRef(targetTypeRef)!;
-
-        if (assignment.Operator == "=")
-        {
-            if (IsBareNull(assignment.Value) && !IsNullableType(targetTypeRef))
-            {
-                diagnostics.Report(assignment.Location, $"Cannot assign null to non-pointer type '{targetType}'.");
-                return;
-            }
-
-            CheckAssignmentCompatibility(assignment.Location, targetTypeRef, assignment.Value, variables, "assignment");
-            return;
-        }
-
-        CheckCompoundAssignmentCompatibility(assignment.Location, targetTypeRef, assignment.Operator, assignment.Value, variables);
-    }
-
-    private void AnalyzeAssignmentMutability(
-        AssignmentExpressionNode assignment,
-        IReadOnlyDictionary<string, LocalMutability>? mutability)
-    {
-        AnalyzeMutationTarget(assignment.Target, assignment.Location, mutability);
-    }
-
-    private void AnalyzeMutationTarget(
-        ExpressionNode target,
-        Cx.Compiler.Syntax.Location location,
-        IReadOnlyDictionary<string, LocalMutability>? mutability)
-    {
-        if (mutability is null || GetAssignmentRootName(target) is not { } name)
-        {
-            return;
-        }
-
-        if (!mutability.TryGetValue(name, out var localMutability))
-        {
-            return;
-        }
-
-        var message = localMutability switch
-        {
-            LocalMutability.Const => $"Cannot assign to const local '{name}'.",
-            LocalMutability.ConstGlobal => $"Cannot assign to const global '{name}'.",
-            LocalMutability.ForeachIndex => $"Cannot assign to foreach index '{name}'.",
-            LocalMutability.ForeachKey => $"Cannot assign to foreach key '{name}'.",
-            LocalMutability.ForeachConstItem => $"Cannot assign to const foreach item '{name}'.",
-            _ => null,
-        };
-
-        if (message is not null)
-        {
-            diagnostics.Report(location, message);
-        }
-    }
-
-    private static string? GetAssignmentRootName(ExpressionNode target) => target switch
-    {
-        NameExpressionNode name => name.SourceText,
-        ParenthesizedExpressionNode parenthesized => GetAssignmentRootName(parenthesized.Expression),
-        MemberExpressionNode member => GetAssignmentRootName(member.Target),
-        IndexExpressionNode index => GetAssignmentRootName(index.Target),
-        UnaryExpressionNode { Operator: "*" } unary => GetAssignmentRootName(unary.Operand),
-        _ => null,
-    };
-
-    private void CheckAssignmentCompatibility(
-        Cx.Compiler.Syntax.Location location,
-        string targetType,
-        ExpressionNode? sourceExpression,
-        IReadOnlyDictionary<string, string> variables,
-        string subject) =>
-        CheckAssignmentCompatibility(location, ParseTypeRef(targetType), sourceExpression, variables, subject);
-
-    private void CheckAssignmentCompatibility(
-        Cx.Compiler.Syntax.Location location,
-        TypeRef? targetType,
-        ExpressionNode? sourceExpression,
-        IReadOnlyDictionary<string, string> variables,
-        string subject)
-    {
-        if (targetType is null || sourceExpression is null || _expressionTypeResolver is null || _typeCompatibility is null)
-        {
-            return;
-        }
-
-        if (sourceExpression is InitializerExpressionNode { TypeNameNode: null })
-        {
-            return;
-        }
-
-        var sourceType = _expressionTypeResolver.ResolveTypeRef(sourceExpression, variables);
-        var targetTypeText = FormatTypeRef(targetType);
-        var sourceTypeText = FormatTypeRef(sourceType);
-        if (targetTypeText is not null && IsTaggedUnionVariantAssignment(targetTypeText, sourceTypeText))
-        {
-            return;
-        }
-
-        if (IsInterfaceBindingAssignment(targetType, sourceType))
-        {
-            return;
-        }
-
-        if (targetTypeText is not null && IsSelfPointerAssignment(targetTypeText, sourceTypeText))
-        {
-            return;
-        }
-
-        if (!_typeCompatibility.CanAssign(targetType, sourceType, out var reason))
-        {
-            diagnostics.Report(location, $"Type mismatch for {subject}: {reason}.");
-        }
-    }
-
-    private static bool IsSelfPointerAssignment(string targetType, string? sourceType) =>
-        string.Equals(sourceType?.Trim(), "Self*", StringComparison.Ordinal)
-        && targetType.TrimEnd().EndsWith("*", StringComparison.Ordinal);
-
-    private bool IsInterfaceBindingAssignment(TypeRef targetType, TypeRef? sourceType)
-    {
-        if (sourceType is null || _typeSystem is null)
-        {
-            return false;
-        }
-
-        var target = _typeSystem.ResolveDefinition(targetType);
-        if (target.Symbol is not TypeSymbol.Interface interfaceSymbol)
-        {
-            return false;
-        }
-
-        return _typeSystem.SatisfiesRequirement(sourceType, interfaceSymbol.Name) is { Success: true };
-    }
-
-    private void CheckCompoundAssignmentCompatibility(
-        Cx.Compiler.Syntax.Location location,
-        TypeRef targetType,
-        string assignmentOperator,
-        ExpressionNode value,
-        IReadOnlyDictionary<string, string> variables)
-    {
-        if (_expressionTypeResolver is null || _typeCompatibility is null)
-        {
-            return;
-        }
-
-        var valueType = _expressionTypeResolver.ResolveTypeRef(value, variables);
-        if (valueType is null)
-        {
-            return;
-        }
-
-        if (IsPointerType(targetType)
-            && assignmentOperator is "+=" or "-="
-            && IsNumericLikeType(valueType))
-        {
-            return;
-        }
-
-        if (IsNumericLikeType(targetType)
-            && IsNumericLikeType(valueType))
-        {
-            return;
-        }
-
-        if (assignmentOperator == "+="
-            && _typeCompatibility.CanAssign(targetType, valueType, out _))
-        {
-            return;
-        }
-
-        diagnostics.Report(
-            location,
-            $"Type mismatch for compound assignment: cannot apply '{assignmentOperator}' to '{FormatTypeRef(targetType)}' and '{FormatTypeRef(valueType)}'.");
-    }
-
-    private bool IsTaggedUnionVariantAssignment(string targetType, string? sourceType)
-    {
-        if (_program is null || sourceType is null)
-        {
-            return false;
-        }
-
-        targetType = StripPointer(ResolveAlias(targetType));
-        sourceType = ResolveAlias(sourceType);
-        var taggedUnion = _program.TaggedUnions.FirstOrDefault(union =>
-            !union.IsRaw
-            && string.Equals(union.Name, targetType, StringComparison.Ordinal));
-        return taggedUnion is not null
-            && taggedUnion.Variants.Any(variant => SameTypeName(ResolveAlias(TypeText(variant.TypeNode)), sourceType));
-    }
 
     private static bool IsBareNull(string expression) =>
         string.Equals(expression.Trim(), "null", StringComparison.Ordinal);
@@ -1747,7 +729,7 @@ public sealed class SemanticAnalyzer(
             case PostfixExpressionNode postfix:
                 if (postfix.Operator is "++" or "--")
                 {
-                    AnalyzeMutationTarget(postfix.Operand, postfix.Location, mutability);
+                    _assignmentAnalyzer?.AnalyzeMutationTarget(postfix.Operand, postfix.Location, mutability);
                 }
 
                 AnalyzeExpressionTree(postfix.Operand, location, variables, mutability);
@@ -1788,7 +770,11 @@ public sealed class SemanticAnalyzer(
                 AnalyzeExpressionTree(assignment.Value, location, variables, mutability);
                 if (variables is not null)
                 {
-                    AnalyzeAssignmentExpression(assignment, variables, mutability);
+                    _assignmentAnalyzer?.AnalyzeAssignmentExpression(
+                        assignment,
+                        variables,
+                        mutability,
+                        AnalyzeExpression);
                 }
 
                 break;
@@ -2235,55 +1221,6 @@ public sealed class SemanticAnalyzer(
     private static bool IsAnyType(TypeRef? type) =>
         UnwrapAlias(type) is TypeRef.Named { Name: "any", Arguments.Count: 0 };
 
-    private static bool IsPointerType(string type) =>
-        type.TrimEnd().EndsWith("*", StringComparison.Ordinal);
-
-    private static bool IsPointerType(TypeRef type) =>
-        UnwrapAlias(type) is TypeRef.Pointer;
-
-    private bool IsNumericLikeType(string type)
-    {
-        type = StripConst(StripPointerSuffix(ResolveAlias(type)).Trim());
-        return type is
-            "char" or
-            "signed char" or
-            "unsigned char" or
-            "short" or
-            "unsigned short" or
-            "int" or
-            "unsigned int" or
-            "long" or
-            "unsigned long" or
-            "long long" or
-            "unsigned long long" or
-            "int8_t" or
-            "uint8_t" or
-            "int16_t" or
-            "uint16_t" or
-            "int32_t" or
-            "uint32_t" or
-            "int64_t" or
-            "uint64_t" or
-            "float" or
-            "double" or
-            "long double" or
-            "size_t" or
-            "usize" or
-            "u8" or
-            "u16" or
-            "u32" or
-            "u64" or
-            "clock_t" or
-            "bool";
-    }
-
-    private bool IsNumericLikeType(TypeRef type)
-    {
-        var unwrapped = UnwrapAlias(type);
-        return unwrapped is TypeRef.Named named
-            && IsNumericLikeType(named.Name);
-    }
-
     private TypeRef ParseTypeRef(string type) =>
         _typeRefParser?.Parse(type) ?? new TypeRef.Unknown();
 
@@ -2299,21 +1236,6 @@ public sealed class SemanticAnalyzer(
 
     private static string? FormatTypeRef(TypeRef? type) =>
         type is null ? null : TypeRefFormatter.ToCxString(type);
-
-    private static string StripConst(string type) =>
-        type.StartsWith("const ", StringComparison.Ordinal)
-            ? type["const ".Length..].TrimStart()
-            : type;
-
-    private static string StripPointerSuffix(string type)
-    {
-        while (type.TrimEnd().EndsWith("*", StringComparison.Ordinal))
-        {
-            type = type.TrimEnd()[..^1];
-        }
-
-        return type.TrimEnd();
-    }
 
     private static bool TrySplitTopLevelSpaceship(string expression, out string left, out string right)
     {
@@ -2341,175 +1263,6 @@ public sealed class SemanticAnalyzer(
         right = string.Empty;
         return false;
     }
-
-    private static IReadOnlyList<GenericStructUse> FindGenericStructUses(string type)
-    {
-        var uses = new List<GenericStructUse>();
-
-        for (var i = 0; i < type.Length; i++)
-        {
-            if (!IsIdentifierStart(type[i]))
-            {
-                continue;
-            }
-
-            var nameStart = i;
-            while (i < type.Length && IsIdentifierPart(type[i]))
-            {
-                i++;
-            }
-
-            if (i >= type.Length || type[i] != '<')
-            {
-                continue;
-            }
-
-            var close = FindMatchingGenericClose(type, i);
-            if (close < 0)
-            {
-                continue;
-            }
-
-            var name = type[nameStart..i];
-            var arguments = SplitGenericArguments(type[(i + 1)..close]);
-            uses.Add(new GenericStructUse(name, arguments));
-            foreach (var argument in arguments)
-            {
-                uses.AddRange(FindGenericStructUses(argument));
-            }
-
-            i = close;
-        }
-
-        return uses;
-    }
-
-    private static IReadOnlyList<string> FindTypeNames(string type)
-    {
-        type = StripArraySuffix(StripPointer(type.Trim()));
-        if (type.Length == 0)
-        {
-            return [];
-        }
-
-        if (TryParseFunctionType(type, out var parameterTypes, out var returnType, out _))
-        {
-            return parameterTypes
-                .SelectMany(FindTypeNames)
-                .Concat(FindTypeNames(returnType))
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-        }
-
-        if (TryParseGenericUse(type, out var genericName, out var arguments))
-        {
-            return new[] { NormalizeTypeName(genericName) }
-                .Concat(arguments.SelectMany(FindTypeNames))
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-        }
-
-        var normalized = NormalizeTypeName(type);
-        return string.IsNullOrWhiteSpace(normalized)
-            ? []
-            : [normalized];
-    }
-
-    private static string NormalizeTypeName(string type)
-    {
-        type = StripArraySuffix(StripPointer(type.Trim()));
-        if (type.StartsWith("const ", StringComparison.Ordinal))
-        {
-            type = type["const ".Length..].TrimStart();
-        }
-
-        return IsBuiltInTypeName(type) ? string.Empty : type;
-    }
-
-    private static string StripArraySuffix(string type)
-    {
-        while (type.EndsWith("]", StringComparison.Ordinal))
-        {
-            var open = type.LastIndexOf('[');
-            if (open < 0)
-            {
-                break;
-            }
-
-            type = type[..open].TrimEnd();
-        }
-
-        return type;
-    }
-
-    private static int FindMatchingGenericClose(string type, int openIndex)
-    {
-        var depth = 0;
-        for (var i = openIndex; i < type.Length; i++)
-        {
-            if (type[i] == '<')
-            {
-                depth++;
-                continue;
-            }
-
-            if (type[i] != '>')
-            {
-                continue;
-            }
-
-            depth--;
-            if (depth == 0)
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    private static IReadOnlyList<string> SplitGenericArguments(string argumentsText)
-    {
-        if (string.IsNullOrWhiteSpace(argumentsText))
-        {
-            return [];
-        }
-
-        var arguments = new List<string>();
-        var start = 0;
-        var angleDepth = 0;
-        var parenDepth = 0;
-        var bracketDepth = 0;
-
-        for (var i = 0; i < argumentsText.Length; i++)
-        {
-            switch (argumentsText[i])
-            {
-                case '<': angleDepth++; break;
-                case '>': angleDepth--; break;
-                case '(': parenDepth++; break;
-                case ')': parenDepth--; break;
-                case '[': bracketDepth++; break;
-                case ']': bracketDepth--; break;
-            }
-
-            if (argumentsText[i] != ',' || angleDepth != 0 || parenDepth != 0 || bracketDepth != 0)
-            {
-                continue;
-            }
-
-            arguments.Add(argumentsText[start..i].Trim());
-            start = i + 1;
-        }
-
-        arguments.Add(argumentsText[start..].Trim());
-        return arguments;
-    }
-
-    private static bool IsIdentifierStart(char ch) => char.IsLetter(ch) || ch == '_';
-
-    private static bool IsIdentifierPart(char ch) => char.IsLetterOrDigit(ch) || ch == '_';
 
     private string? OwnerType(FunctionNode function) => TypeTextOrNull(function.OwnerTypeNode);
 
@@ -2543,5 +1296,4 @@ public sealed class SemanticAnalyzer(
         IReadOnlyList<TypeRef> ParameterTypes,
         bool IsVariadic);
 
-    private sealed record GenericStructUse(string Name, IReadOnlyList<string> Arguments);
 }

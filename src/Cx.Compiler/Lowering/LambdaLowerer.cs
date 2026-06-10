@@ -66,7 +66,9 @@ internal static class LambdaLowerer
         },
         ReturnStatement ret => ret with
         {
-            Expression = LowerExpressionNode(ret.Expression, TryParseFunctionReturnType(functionReturnType), parentName, state),
+            Expression = ret.Expression is null
+                ? null
+                : LowerExpressionNode(ret.Expression, TryParseFunctionReturnType(functionReturnType), parentName, state),
         },
         CStatement c => c with
         {
@@ -469,7 +471,7 @@ internal static class LambdaLowerer
     private static TypeNode CreateTypeNode(string type)
     {
         var location = new Location(new SourceFile("<lambda>", ""), 0, 1, 1);
-        return TypeNode.Create(location, type);
+        return TypeNode.CreateFromText(location, type);
     }
 
     private static string TypeText(TypeNode? typeNode, State state) =>
