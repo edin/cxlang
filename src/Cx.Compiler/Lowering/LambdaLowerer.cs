@@ -405,8 +405,9 @@ internal static class LambdaLowerer
 
         returnType = string.IsNullOrWhiteSpace(returnType) ? "int" : returnType;
         var functionName = $"{parentName}_fn_{state.NextId++}";
+        var location = Location.Synthetic("<lambda>");
         state.GeneratedFunctions.Add(new FunctionNode(
-            new Location(new SourceFile("<lambda>", ""), 0, 1, 1),
+            location,
             IsStatic: false,
             OwnerType: null,
             Name: functionName,
@@ -417,8 +418,8 @@ internal static class LambdaLowerer
             Body:
             [
                 new ReturnStatement(
-                    new Location(new SourceFile("<lambda>", ""), 0, 1, 1),
-                    new RawExpressionNode(new Location(new SourceFile("<lambda>", ""), 0, 1, 1), body))
+                    location,
+                    new RawExpressionNode(location, body))
             ],
             Attributes: [],
             ReturnTypeNode: CreateTypeNode(returnType)));
@@ -434,7 +435,7 @@ internal static class LambdaLowerer
         string body)
     {
         var parser = new TypeRefParser(new ProgramNode(
-            new Location(new SourceFile("<lambda>", string.Empty), 0, 1, 1),
+            Location.Synthetic("<lambda>"),
             []));
         var parameterText = string.Join(", ", parameters.Select(parameter => $"{parameter.Name}: {TypeText(parameter.TypeNode, parser)}"));
         return $"fn {functionName}({parameterText}) -> {returnType} {{{body}}}";
@@ -459,7 +460,7 @@ internal static class LambdaLowerer
             }
 
             parameters.Add(new ParameterNode(
-                new Location(new SourceFile("<lambda>", ""), 0, 1, 1),
+                Location.Synthetic("<lambda>"),
                 name,
                 [],
                 TypeNode: CreateTypeNode(type)));
@@ -470,8 +471,7 @@ internal static class LambdaLowerer
 
     private static TypeNode CreateTypeNode(string type)
     {
-        var location = new Location(new SourceFile("<lambda>", ""), 0, 1, 1);
-        return TypeNode.CreateFromText(location, type);
+        return TypeNode.CreateFromText(Location.Synthetic("<lambda>"), type);
     }
 
     private static string TypeText(TypeNode? typeNode, State state) =>
@@ -588,14 +588,9 @@ internal static class LambdaLowerer
 
     private static string? TryParseFunctionReturnType(string type)
     {
-        type = type.Trim();
-        if (!type.StartsWith("fn(", StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        var arrow = type.IndexOf(")->", StringComparison.Ordinal);
-        return arrow < 0 ? null : type[(arrow + 3)..].Trim();
+        return TypeSyntaxParser.Parse(type) is FunctionTypeSyntaxNode function
+            ? TypeSyntaxFormatter.ToCxString(function.ReturnType)
+            : null;
     }
 
     private static int FindMatching(string text, int openIndex, char open, char close)
@@ -682,7 +677,7 @@ internal static class LambdaLowerer
     private static string GetParentName(FunctionNode function)
     {
         var parser = new TypeRefParser(new ProgramNode(
-            new Location(new SourceFile("<lambda>", string.Empty), 0, 1, 1),
+            Location.Synthetic("<lambda>"),
             []));
         var ownerType = TypeText(function.OwnerTypeNode, parser);
         var name = string.IsNullOrWhiteSpace(ownerType)

@@ -76,52 +76,36 @@ internal static class TypeAdapterLoweringPass
 
     private static string GetGenericBaseName(string type)
     {
-        type = type.Trim().TrimEnd('*').TrimEnd();
-        var index = type.IndexOf('<');
-        return index < 0 ? type : type[..index].Trim();
+        type = StripPointerSuffix(type);
+        return TypeSyntaxParser.Parse(type) is GenericTypeSyntaxNode generic
+            ? TypeSyntaxFormatter.ToCxString(generic.Target)
+            : type;
     }
 
     private static bool TryParseGenericUse(string type, out string name, out IReadOnlyList<string> arguments)
     {
-        type = type.Trim();
-        var open = type.IndexOf('<');
-        if (open < 0 || !type.EndsWith('>'))
+        type = StripPointerSuffix(type);
+        if (TypeSyntaxParser.Parse(type) is not GenericTypeSyntaxNode generic)
         {
             name = type;
             arguments = [];
             return false;
         }
 
-        name = type[..open].Trim();
-        arguments = SplitTopLevel(type[(open + 1)..^1])
-            .Select(part => part.Trim())
-            .Where(part => part.Length > 0)
-            .ToList();
+        name = TypeSyntaxFormatter.ToCxString(generic.Target);
+        arguments = generic.Arguments.Select(TypeSyntaxFormatter.ToCxString).ToList();
         return true;
     }
 
-    private static IEnumerable<string> SplitTopLevel(string text)
+    private static string StripPointerSuffix(string type)
     {
-        var start = 0;
-        var depth = 0;
-        for (var i = 0; i < text.Length; i++)
+        type = type.Trim();
+        while (type.EndsWith("*", StringComparison.Ordinal))
         {
-            switch (text[i])
-            {
-                case '<':
-                    depth++;
-                    break;
-                case '>':
-                    depth--;
-                    break;
-                case ',' when depth == 0:
-                    yield return text[start..i];
-                    start = i + 1;
-                    break;
-            }
+            type = type[..^1].TrimEnd();
         }
 
-        yield return text[start..];
+        return type;
     }
 
     private static string TypeText(TypeNode? typeNode, TypeRefParser typeRefParser)

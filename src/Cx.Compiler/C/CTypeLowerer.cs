@@ -8,7 +8,7 @@ namespace Cx.Compiler.C;
 internal static class CTypeLowerer
 {
     private static readonly TypeRefParser TypeParser = new(new ProgramNode(
-        new Location(new SourceFile("<c-type-lowerer>", string.Empty), 0, 1, 1),
+        Location.Synthetic("<c-type-lowerer>"),
         []));
 
     public static string LowerType(

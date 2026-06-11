@@ -704,36 +704,7 @@ public sealed partial class CEmitter
             string.Equals(targetType.Trim(), sourceType.Trim(), StringComparison.Ordinal)
             || (targetType.Trim() == "double" && sourceType.Trim() is "int" or "float")
             || (targetType.Trim() == "float" && sourceType.Trim() == "int")
-            || (IsNumericType(targetType) && IsNumericType(sourceType));
-
-        private static bool IsNumericType(string type)
-        {
-            type = type.Trim();
-            return type is
-                "char" or
-                "signed char" or
-                "unsigned char" or
-                "short" or
-                "unsigned short" or
-                "int" or
-                "unsigned int" or
-                "long" or
-                "unsigned long" or
-                "long long" or
-                "unsigned long long" or
-                "usize" or
-                "i8" or
-                "i16" or
-                "i32" or
-                "i64" or
-                "u8" or
-                "u16" or
-                "u32" or
-                "u64" or
-                "float" or
-                "double" or
-                "long double";
-        }
+            || (BuiltinTypes.IsNumeric(targetType) && BuiltinTypes.IsNumeric(sourceType));
 
         private static string RemovePointer(string type)
         {

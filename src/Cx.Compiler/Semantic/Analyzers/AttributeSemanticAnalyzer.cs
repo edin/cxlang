@@ -154,7 +154,7 @@ internal sealed class AttributeSemanticAnalyzer(DiagnosticBag diagnostics)
     private static IReadOnlyList<AttributeDeclarationNode> BuiltInAttributeDeclarations() =>
     [
         new AttributeDeclarationNode(
-            new Location(new SourceFile("<built-in>", ""), 0, 1, 1),
+            Location.Synthetic("<built-in>"),
             "derive",
             ["struct", "union", "enum"],
             [])

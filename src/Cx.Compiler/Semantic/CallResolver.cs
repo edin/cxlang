@@ -608,10 +608,9 @@ internal sealed class CallResolver(
     private static string GetGenericBaseName(string type)
     {
         type = type.Trim();
-        var genericStart = type.IndexOf('<', StringComparison.Ordinal);
-        return genericStart < 0
-            ? type
-            : type[..genericStart].Trim();
+        return TypeSyntaxParser.Parse(type) is GenericTypeSyntaxNode generic
+            ? TypeSyntaxFormatter.ToCxString(generic.Target)
+            : type;
     }
 
     private static string? GetQualifiedName(ExpressionNode expression) => expression switch
@@ -626,54 +625,14 @@ internal sealed class CallResolver(
     {
         name = string.Empty;
         arguments = [];
-        var genericStart = type.IndexOf('<', StringComparison.Ordinal);
-        var genericEnd = type.LastIndexOf('>');
-        if (genericStart <= 0 || genericEnd < genericStart)
+        if (TypeSyntaxParser.Parse(type) is not GenericTypeSyntaxNode generic)
         {
             return false;
         }
 
-        name = type[..genericStart];
-        arguments = SplitGenericArguments(type[(genericStart + 1)..genericEnd]);
+        name = TypeSyntaxFormatter.ToCxString(generic.Target);
+        arguments = generic.Arguments.Select(TypeSyntaxFormatter.ToCxString).ToList();
         return true;
-    }
-
-    private static IReadOnlyList<string> SplitGenericArguments(string argumentsText)
-    {
-        if (string.IsNullOrWhiteSpace(argumentsText))
-        {
-            return [];
-        }
-
-        var arguments = new List<string>();
-        var start = 0;
-        var angleDepth = 0;
-        var parenDepth = 0;
-        var bracketDepth = 0;
-
-        for (var i = 0; i < argumentsText.Length; i++)
-        {
-            switch (argumentsText[i])
-            {
-                case '<': angleDepth++; break;
-                case '>': angleDepth--; break;
-                case '(': parenDepth++; break;
-                case ')': parenDepth--; break;
-                case '[': bracketDepth++; break;
-                case ']': bracketDepth--; break;
-            }
-
-            if (argumentsText[i] != ',' || angleDepth != 0 || parenDepth != 0 || bracketDepth != 0)
-            {
-                continue;
-            }
-
-            arguments.Add(argumentsText[start..i].Trim());
-            start = i + 1;
-        }
-
-        arguments.Add(argumentsText[start..].Trim());
-        return arguments;
     }
 
     private string? OwnerType(FunctionNode function) => TypeTextOrNull(function.OwnerTypeNode);

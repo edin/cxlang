@@ -10,7 +10,7 @@ internal static class TypeTokenParser
     {
         if (tokens.Count == 0)
         {
-            return TypeNode.CreateFromText(new Location(new("<type-token-parser>", string.Empty), 0, 1, 1), string.Empty);
+            return TypeNode.CreateFromText(Location.Synthetic("<type-token-parser>"), string.Empty);
         }
 
         var syntax = TryParseSyntax(tokens);

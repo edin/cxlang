@@ -7,7 +7,7 @@ namespace Cx.Compiler.Lowering;
 internal static class GenericTypeSubstitutionBuilder
 {
     private static readonly TypeRefParser TypeParser = new(new ProgramNode(
-        new Location(new SourceFile("<generic-type-substitutions>", string.Empty), 0, 1, 1),
+        Location.Synthetic("<generic-type-substitutions>"),
         []));
 
     public static IReadOnlyDictionary<string, TypeRef> Build(IReadOnlyDictionary<string, string> substitutions) =>

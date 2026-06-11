@@ -8,7 +8,7 @@ internal sealed class ModuleVisibilityAnalyzer(
     IReadOnlyList<ProgramNode> availablePrograms)
 {
     private readonly TypeRefParser _typeRefParser = new(availablePrograms.FirstOrDefault() ?? new ProgramNode(
-        new Cx.Compiler.Syntax.Location(new Cx.Compiler.Syntax.SourceFile("<module-visibility>", string.Empty), 0, 1, 1),
+        Cx.Compiler.Syntax.Location.Synthetic("<module-visibility>"),
         []));
 
     private readonly IReadOnlyDictionary<string, ModuleSymbols> _modules = availablePrograms
@@ -461,148 +461,50 @@ internal sealed class ModuleVisibilityAnalyzer(
 
     private static IReadOnlyList<string> FindTypeNames(string type)
     {
-        type = StripArraySuffix(StripPointer(type.Trim()));
-        if (type.Length == 0)
-        {
-            return [];
-        }
+        var names = new List<string>();
+        CollectTypeNames(TypeSyntaxParser.Parse(type), names);
+        return names
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
 
-        if (TryParseFunctionType(type, out var parameterTypes, out var returnType))
+    private static void CollectTypeNames(TypeSyntaxNode? syntax, List<string> names)
+    {
+        switch (syntax)
         {
-            return parameterTypes
-                .SelectMany(FindTypeNames)
-                .Concat(FindTypeNames(returnType))
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
+            case null:
+                break;
+            case NamedTypeSyntaxNode named:
+                names.Add(NormalizeTypeName(named.Name));
+                break;
+            case GenericTypeSyntaxNode generic:
+                CollectTypeNames(generic.Target, names);
+                foreach (var argument in generic.Arguments)
+                {
+                    CollectTypeNames(argument, names);
+                }
+                break;
+            case PointerTypeSyntaxNode pointer:
+                CollectTypeNames(pointer.Element, names);
+                break;
+            case FixedArrayTypeSyntaxNode fixedArray:
+                CollectTypeNames(fixedArray.Element, names);
+                break;
+            case FunctionTypeSyntaxNode function:
+                foreach (var parameter in function.Parameters)
+                {
+                    CollectTypeNames(parameter, names);
+                }
+                CollectTypeNames(function.ReturnType, names);
+                break;
         }
-
-        if (TryParseGenericUse(type, out var genericName, out var arguments))
-        {
-            return new[] { NormalizeTypeName(genericName) }
-                .Concat(arguments.SelectMany(FindTypeNames))
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-        }
-
-        var normalized = NormalizeTypeName(type);
-        return string.IsNullOrWhiteSpace(normalized) ? [] : [normalized];
     }
 
     private static string NormalizeTypeName(string type)
     {
-        type = StripArraySuffix(StripPointer(type.Trim()));
-        if (type.StartsWith("const ", StringComparison.Ordinal))
-        {
-            type = type["const ".Length..].TrimStart();
-        }
-
-        return IsBuiltInTypeName(type) ? string.Empty : type;
-    }
-
-    private static bool IsBuiltInTypeName(string name) =>
-        name is
-            "void" or "char" or "short" or "int" or "long" or "long long" or
-            "float" or "double" or "bool" or "usize" or "size_t";
-
-    private static string StripPointer(string type)
-    {
-        while (type.TrimEnd().EndsWith("*", StringComparison.Ordinal))
-        {
-            type = type.TrimEnd()[..^1];
-        }
-
-        return type.TrimEnd();
-    }
-
-    private static string StripArraySuffix(string type)
-    {
-        while (type.EndsWith("]", StringComparison.Ordinal))
-        {
-            var open = type.LastIndexOf('[');
-            if (open < 0)
-            {
-                break;
-            }
-
-            type = type[..open].TrimEnd();
-        }
-
-        return type;
-    }
-
-    private static bool TryParseGenericUse(string type, out string name, out IReadOnlyList<string> arguments)
-    {
-        name = string.Empty;
-        arguments = [];
-        var genericStart = type.IndexOf('<', StringComparison.Ordinal);
-        var genericEnd = type.LastIndexOf('>');
-        if (genericStart <= 0 || genericEnd < genericStart)
-        {
-            return false;
-        }
-
-        name = type[..genericStart].Trim();
-        arguments = SplitGenericArguments(type[(genericStart + 1)..genericEnd]);
-        return true;
-    }
-
-    private static bool TryParseFunctionType(string type, out IReadOnlyList<string> parameters, out string returnType)
-    {
-        parameters = [];
-        returnType = string.Empty;
-        type = type.Trim();
-        if (!type.StartsWith("fn(", StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        var close = type.IndexOf(")->", StringComparison.Ordinal);
-        if (close < 0)
-        {
-            return false;
-        }
-
-        parameters = SplitGenericArguments(type[3..close]);
-        returnType = type[(close + 3)..].Trim();
-        return returnType.Length > 0;
-    }
-
-    private static IReadOnlyList<string> SplitGenericArguments(string argumentsText)
-    {
-        if (string.IsNullOrWhiteSpace(argumentsText))
-        {
-            return [];
-        }
-
-        var arguments = new List<string>();
-        var start = 0;
-        var angleDepth = 0;
-        var parenDepth = 0;
-        var bracketDepth = 0;
-        for (var i = 0; i < argumentsText.Length; i++)
-        {
-            switch (argumentsText[i])
-            {
-                case '<': angleDepth++; break;
-                case '>': angleDepth--; break;
-                case '(': parenDepth++; break;
-                case ')': parenDepth--; break;
-                case '[': bracketDepth++; break;
-                case ']': bracketDepth--; break;
-            }
-
-            if (argumentsText[i] != ',' || angleDepth != 0 || parenDepth != 0 || bracketDepth != 0)
-            {
-                continue;
-            }
-
-            arguments.Add(argumentsText[start..i].Trim());
-            start = i + 1;
-        }
-
-        arguments.Add(argumentsText[start..].Trim());
-        return arguments;
+        type = BuiltinTypes.Normalize(type);
+        return BuiltinTypes.IsBuiltin(type) ? string.Empty : type;
     }
 
     private static string? OwnerType(FunctionNode function)

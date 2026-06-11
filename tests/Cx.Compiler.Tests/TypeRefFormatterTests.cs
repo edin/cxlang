@@ -1,4 +1,6 @@
 using Cx.Compiler.Semantic;
+using Cx.Compiler.Syntax;
+using Cx.Compiler.Syntax.Nodes;
 
 namespace Cx.Compiler.Tests;
 
@@ -58,5 +60,25 @@ public sealed class TypeRefFormatterTests
         var type = new TypeRef.Alias("usize", new TypeRef.Named("unsigned long long", []));
 
         Assert.Equal("usize", TypeRefFormatter.ToCxString(type));
+    }
+
+    [Fact]
+    public void TypeRefParser_ParsesNestedGenericTypeTextThroughTypeSyntaxParser()
+    {
+        var parser = new TypeRefParser(new ProgramNode(Location.Synthetic("<test>"), []));
+
+        var type = parser.Parse("HashMap<StringView, Vec<int>>");
+
+        Assert.Equal("HashMap<StringView,Vec<int>>", TypeRefFormatter.ToCxString(type));
+    }
+
+    [Fact]
+    public void TypeRefParser_ParsesFixedArrayTypeTextThroughTypeSyntaxParser()
+    {
+        var parser = new TypeRefParser(new ProgramNode(Location.Synthetic("<test>"), []));
+
+        var type = parser.Parse("Vec<int>[4]");
+
+        Assert.Equal("Vec<int>[4]", TypeRefFormatter.ToCxString(type));
     }
 }

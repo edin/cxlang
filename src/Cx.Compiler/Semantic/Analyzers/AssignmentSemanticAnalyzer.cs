@@ -229,37 +229,8 @@ internal sealed class AssignmentSemanticAnalyzer(
     private bool IsNumericLikeType(string type)
     {
         type = StripConst(StripPointerSuffix(ResolveAlias(type)).Trim());
-        return type is
-            "char" or
-            "signed char" or
-            "unsigned char" or
-            "short" or
-            "unsigned short" or
-            "int" or
-            "unsigned int" or
-            "long" or
-            "unsigned long" or
-            "long long" or
-            "unsigned long long" or
-            "int8_t" or
-            "uint8_t" or
-            "int16_t" or
-            "uint16_t" or
-            "int32_t" or
-            "uint32_t" or
-            "int64_t" or
-            "uint64_t" or
-            "float" or
-            "double" or
-            "long double" or
-            "size_t" or
-            "usize" or
-            "u8" or
-            "u16" or
-            "u32" or
-            "u64" or
-            "clock_t" or
-            "bool";
+        return BuiltinTypes.IsNumeric(type)
+            || string.Equals(BuiltinTypes.Normalize(type), "bool", StringComparison.Ordinal);
     }
 
     private static string? GetAssignmentRootName(ExpressionNode target) => target switch

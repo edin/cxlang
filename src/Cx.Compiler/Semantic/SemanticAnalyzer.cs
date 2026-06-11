@@ -688,25 +688,13 @@ public sealed class SemanticAnalyzer(
             return false;
         }
 
-        return IsBuiltInTypeName(name)
+        return BuiltinTypes.IsBuiltin(name)
             || _program.TypeAliases.Any(typeAlias => string.Equals(typeAlias.Name, name, StringComparison.Ordinal))
             || _program.Structs.Any(structNode => string.Equals(structNode.Name, name, StringComparison.Ordinal))
             || _program.Enums.Any(enumNode => string.Equals(enumNode.Name, name, StringComparison.Ordinal))
             || _program.Interfaces.Any(interfaceNode => string.Equals(interfaceNode.Name, name, StringComparison.Ordinal))
             || _program.TaggedUnions.Any(union => string.Equals(union.Name, name, StringComparison.Ordinal));
     }
-
-    private static bool IsBuiltInTypeName(string name) =>
-        name is
-            "void" or
-            "char" or
-            "short" or
-            "int" or
-            "long" or
-            "long long" or
-            "float" or
-            "double" or
-            "bool";
 
     private static bool ContainsNullArithmetic(ExpressionNode? expression) =>
         expression switch

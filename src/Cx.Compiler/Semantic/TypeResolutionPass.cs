@@ -393,7 +393,7 @@ internal sealed class TypeResolutionPass(DiagnosticBag diagnostics)
     {
         if (_typeSyntaxConverter is null)
         {
-            diagnostics.Report(new Location(new("<type-resolution>", string.Empty), 0, 1, 1), "Type resolution was not initialized.");
+            diagnostics.Report(Location.Synthetic("<type-resolution>"), "Type resolution was not initialized.");
             return new TypeRef.Unknown();
         }
 
@@ -406,7 +406,7 @@ internal sealed class TypeResolutionPass(DiagnosticBag diagnostics)
     {
         if (_parser is null)
         {
-            diagnostics.Report(new Location(new("<type-resolution>", string.Empty), 0, 1, 1), "Type resolution was not initialized.");
+            diagnostics.Report(Location.Synthetic("<type-resolution>"), "Type resolution was not initialized.");
             return new TypeRef.Unknown();
         }
 

@@ -9,7 +9,7 @@ internal sealed class RawGenericUseCollector(IReadOnlyList<FunctionNode> generic
 {
     private readonly List<RawGenericUseAuditEntry> _auditEntries = [];
     private readonly TypeRefParser _typeRefParser = new(new ProgramNode(
-        new Location(new SourceFile("<raw-generic-use>", string.Empty), 0, 1, 1),
+        Location.Synthetic("<raw-generic-use>"),
         genericFunctions.Cast<TopLevelNode>().ToList()));
 
     public IReadOnlyList<RawGenericUseAuditEntry> AuditEntries => _auditEntries;

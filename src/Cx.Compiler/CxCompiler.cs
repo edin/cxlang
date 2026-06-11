@@ -228,7 +228,7 @@ public sealed class CxCompiler
         {
             var location = selectedPrograms.FirstOrDefault()?.Location
                 ?? programs.FirstOrDefault()?.Location
-                ?? new Location(new SourceFile("<tests>", string.Empty), 0, 1, 1);
+                ?? Location.Synthetic("<tests>");
             diagnostics.Report(location, moduleName is null
                 ? "No tests found."
                 : $"No tests found in module '{moduleName}'.");
@@ -276,7 +276,7 @@ public sealed class CxCompiler
             })
             .ToList();
 
-        var rootLocation = new Location(new SourceFile("<tests>", string.Empty), 0, 1, 1);
+        var rootLocation = Location.Synthetic("<tests>");
         var rootDeclarations = new List<TopLevelNode>();
         foreach (var importedModuleName in testCases
             .Select(testCase => testCase.Program.Module?.Name)
@@ -314,7 +314,7 @@ public sealed class CxCompiler
         IReadOnlyList<(ProgramNode Program, TestNode Test)> testCases,
         IReadOnlyDictionary<TestNode, string> generatedNames)
     {
-        var location = new Location(new SourceFile("<tests>", string.Empty), 0, 1, 1);
+        var location = Location.Synthetic("<tests>");
         var body = new List<StatementNode>
         {
             new LetStatement(
@@ -1307,6 +1307,6 @@ public sealed class CxCompiler
 
     private static TypeNode RewriteTypeNode(TypeNode? typeNode, string typeName) =>
         TypeNode.CreateFromText(
-            typeNode?.Location ?? new Location(new SourceFile("<type-rewrite>", string.Empty), 0, 1, 1),
+            typeNode?.Location ?? Location.Synthetic("<type-rewrite>"),
             typeName);
 }

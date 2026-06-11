@@ -279,46 +279,6 @@ internal sealed class TypeResolver(
     ProgramNode program,
     IReadOnlyList<string>? genericParameters = null)
 {
-    private static readonly IReadOnlySet<string> BuiltinTypes = new HashSet<string>(StringComparer.Ordinal)
-    {
-        "void",
-        "bool",
-        "char",
-        "signed char",
-        "unsigned char",
-        "short",
-        "unsigned short",
-        "int",
-        "unsigned int",
-        "long",
-        "unsigned long",
-        "long long",
-        "unsigned long long",
-        "float",
-        "double",
-        "long double",
-        "size_t",
-        "usize",
-        "u8",
-        "u16",
-        "u32",
-        "u64",
-        "i8",
-        "i16",
-        "i32",
-        "i64",
-        "int8_t",
-        "uint8_t",
-        "int16_t",
-        "uint16_t",
-        "int32_t",
-        "uint32_t",
-        "int64_t",
-        "uint64_t",
-        "clock_t",
-        "FILE",
-    };
-
     private readonly IReadOnlySet<string> _genericParameters = (genericParameters ?? [])
         .ToHashSet(StringComparer.Ordinal);
 
@@ -402,7 +362,7 @@ internal sealed class TypeResolver(
 
         return new ResolvedType(
             named,
-            IsBuiltin(named.Name) ? new TypeSymbol.Builtin(named.Name) : null,
+            BuiltinTypes.IsBuiltin(named.Name) ? new TypeSymbol.Builtin(named.Name) : null,
             EmptySubstitutions());
     }
 
@@ -451,17 +411,6 @@ internal sealed class TypeResolver(
         return parameters
             .Zip(arguments)
             .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
-    }
-
-    private static bool IsBuiltin(string name)
-    {
-        name = name.Trim();
-        if (name.StartsWith("const ", StringComparison.Ordinal))
-        {
-            name = name["const ".Length..].TrimStart();
-        }
-
-        return BuiltinTypes.Contains(name);
     }
 
     private static IReadOnlyDictionary<string, TypeRef> EmptySubstitutions() =>
