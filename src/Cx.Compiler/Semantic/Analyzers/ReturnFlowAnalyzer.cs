@@ -9,9 +9,27 @@ internal sealed class ReturnFlowAnalyzer(ProgramNode program, ExpressionTypeReso
         IReadOnlyDictionary<string, string> variables) =>
         statements.Any(statement => StatementAlwaysReturns(statement, variables));
 
+    public bool StatementsAlwaysReturn(
+        IReadOnlyList<StatementNode> statements,
+        TypeEnvironment variables) =>
+        statements.Any(statement => StatementAlwaysReturns(statement, variables));
+
     public bool StatementAlwaysReturns(
         StatementNode statement,
         IReadOnlyDictionary<string, string> variables) =>
+        statement switch
+        {
+            ReturnStatement => true,
+            IfStatement ifStatement => IfStatementAlwaysReturns(ifStatement, variables),
+            ElseBlockStatement elseBlock => StatementsAlwaysReturn(elseBlock.Body, variables),
+            SwitchStatement switchStatement => SwitchStatementAlwaysReturns(switchStatement, variables),
+            MatchStatement matchStatement => MatchStatementAlwaysReturns(matchStatement, variables),
+            _ => false,
+        };
+
+    public bool StatementAlwaysReturns(
+        StatementNode statement,
+        TypeEnvironment variables) =>
         statement switch
         {
             ReturnStatement => true,
@@ -35,9 +53,27 @@ internal sealed class ReturnFlowAnalyzer(ProgramNode program, ExpressionTypeReso
             _ => false,
         };
 
+    public bool StatementAlwaysTransfersControl(
+        StatementNode statement,
+        TypeEnvironment variables) =>
+        statement switch
+        {
+            ReturnStatement or BreakStatement or ContinueStatement => true,
+            IfStatement ifStatement => IfStatementAlwaysTransfersControl(ifStatement, variables),
+            ElseBlockStatement elseBlock => StatementsAlwaysTransferControl(elseBlock.Body, variables),
+            SwitchStatement switchStatement => SwitchStatementAlwaysReturns(switchStatement, variables),
+            MatchStatement matchStatement => MatchStatementAlwaysReturns(matchStatement, variables),
+            _ => false,
+        };
+
     public bool IsMatchExhaustive(
         MatchStatement matchStatement,
         IReadOnlyDictionary<string, string> variables) =>
+        IsMatchExhaustive(matchStatement, ResolveMatchedTaggedUnion(matchStatement, variables));
+
+    public bool IsMatchExhaustive(
+        MatchStatement matchStatement,
+        TypeEnvironment variables) =>
         IsMatchExhaustive(matchStatement, ResolveMatchedTaggedUnion(matchStatement, variables));
 
     public TaggedUnionNode? ResolveMatchedTaggedUnion(
@@ -45,14 +81,15 @@ internal sealed class ReturnFlowAnalyzer(ProgramNode program, ExpressionTypeReso
         IReadOnlyDictionary<string, string> variables)
     {
         var matchExpressionType = expressionTypeResolver.ResolveTypeRef(matchStatement.Expression, variables);
-        var normalizedType = TypeRefFacts.GetBaseName(matchExpressionType);
-        if (normalizedType is null)
-        {
-            return null;
-        }
+        return ResolveTaggedUnion(matchExpressionType);
+    }
 
-        return program.TaggedUnions.FirstOrDefault(union =>
-            string.Equals(union.Name, normalizedType, StringComparison.Ordinal));
+    public TaggedUnionNode? ResolveMatchedTaggedUnion(
+        MatchStatement matchStatement,
+        TypeEnvironment variables)
+    {
+        var matchExpressionType = expressionTypeResolver.ResolveTypeRef(matchStatement.Expression, variables);
+        return ResolveTaggedUnion(matchExpressionType);
     }
 
     private bool StatementsAlwaysTransferControl(
@@ -60,9 +97,21 @@ internal sealed class ReturnFlowAnalyzer(ProgramNode program, ExpressionTypeReso
         IReadOnlyDictionary<string, string> variables) =>
         statements.Any(statement => StatementAlwaysTransfersControl(statement, variables));
 
+    private bool StatementsAlwaysTransferControl(
+        IReadOnlyList<StatementNode> statements,
+        TypeEnvironment variables) =>
+        statements.Any(statement => StatementAlwaysTransfersControl(statement, variables));
+
     private bool IfStatementAlwaysTransfersControl(
         IfStatement ifStatement,
         IReadOnlyDictionary<string, string> variables) =>
+        StatementsAlwaysTransferControl(ifStatement.ThenBody, variables)
+        && ifStatement.ElseBranch is not null
+        && StatementAlwaysTransfersControl(ifStatement.ElseBranch, variables);
+
+    private bool IfStatementAlwaysTransfersControl(
+        IfStatement ifStatement,
+        TypeEnvironment variables) =>
         StatementsAlwaysTransferControl(ifStatement.ThenBody, variables)
         && ifStatement.ElseBranch is not null
         && StatementAlwaysTransfersControl(ifStatement.ElseBranch, variables);
@@ -74,9 +123,23 @@ internal sealed class ReturnFlowAnalyzer(ProgramNode program, ExpressionTypeReso
         && ifStatement.ElseBranch is not null
         && StatementAlwaysReturns(ifStatement.ElseBranch, variables);
 
+    private bool IfStatementAlwaysReturns(
+        IfStatement ifStatement,
+        TypeEnvironment variables) =>
+        StatementsAlwaysReturn(ifStatement.ThenBody, variables)
+        && ifStatement.ElseBranch is not null
+        && StatementAlwaysReturns(ifStatement.ElseBranch, variables);
+
     private bool SwitchStatementAlwaysReturns(
         SwitchStatement switchStatement,
         IReadOnlyDictionary<string, string> variables) =>
+        (switchStatement.DefaultBody.Count > 0 || IsSwitchExhaustive(switchStatement, variables))
+        && (switchStatement.DefaultBody.Count == 0 || StatementsAlwaysReturn(switchStatement.DefaultBody, variables))
+        && switchStatement.Cases.All(switchCase => StatementsAlwaysReturn(switchCase.Body, variables));
+
+    private bool SwitchStatementAlwaysReturns(
+        SwitchStatement switchStatement,
+        TypeEnvironment variables) =>
         (switchStatement.DefaultBody.Count > 0 || IsSwitchExhaustive(switchStatement, variables))
         && (switchStatement.DefaultBody.Count == 0 || StatementsAlwaysReturn(switchStatement.DefaultBody, variables))
         && switchStatement.Cases.All(switchCase => StatementsAlwaysReturn(switchCase.Body, variables));
@@ -86,6 +149,19 @@ internal sealed class ReturnFlowAnalyzer(ProgramNode program, ExpressionTypeReso
         IReadOnlyDictionary<string, string> variables)
     {
         var expressionType = expressionTypeResolver.ResolveTypeRef(switchStatement.Expression, variables);
+        return IsSwitchExhaustive(switchStatement, expressionType);
+    }
+
+    private bool IsSwitchExhaustive(
+        SwitchStatement switchStatement,
+        TypeEnvironment variables)
+    {
+        var expressionType = expressionTypeResolver.ResolveTypeRef(switchStatement.Expression, variables);
+        return IsSwitchExhaustive(switchStatement, expressionType);
+    }
+
+    private bool IsSwitchExhaustive(SwitchStatement switchStatement, TypeRef? expressionType)
+    {
         var enumType = TypeRefFacts.GetBaseName(expressionType);
         if (enumType is null)
         {
@@ -110,6 +186,24 @@ internal sealed class ReturnFlowAnalyzer(ProgramNode program, ExpressionTypeReso
         IReadOnlyDictionary<string, string> variables) =>
         IsMatchExhaustive(matchStatement, variables)
         && matchStatement.Arms.All(arm => StatementsAlwaysReturn(arm.Body, variables));
+
+    private bool MatchStatementAlwaysReturns(
+        MatchStatement matchStatement,
+        TypeEnvironment variables) =>
+        IsMatchExhaustive(matchStatement, variables)
+        && matchStatement.Arms.All(arm => StatementsAlwaysReturn(arm.Body, variables));
+
+    private TaggedUnionNode? ResolveTaggedUnion(TypeRef? expressionType)
+    {
+        var normalizedType = TypeRefFacts.GetBaseName(expressionType);
+        if (normalizedType is null)
+        {
+            return null;
+        }
+
+        return program.TaggedUnions.FirstOrDefault(union =>
+            string.Equals(union.Name, normalizedType, StringComparison.Ordinal));
+    }
 
     private static bool IsMatchExhaustive(MatchStatement matchStatement, TaggedUnionNode? taggedUnion)
     {

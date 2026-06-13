@@ -26,19 +26,58 @@ internal sealed class ReturnSemanticAnalyzer(
             return;
         }
 
+        AnalyzeReturnCore(
+            statement,
+            returnType,
+            () => analyzeExpression(statement.Expression!, statement.Location, variables, mutability),
+            () => assignmentAnalyzer.CheckAssignmentCompatibility(statement.Location, returnType, statement.Expression, variables, "return value"));
+    }
+
+    public void AnalyzeReturn(
+        ReturnStatement statement,
+        TypeRef returnType,
+        IReadOnlyDictionary<string, string> variables,
+        TypeEnvironment typeEnvironment,
+        IReadOnlyDictionary<string, LocalMutability> mutability,
+        Action<ExpressionNode, Location, IReadOnlyDictionary<string, string>, TypeEnvironment?, IReadOnlyDictionary<string, LocalMutability>?> analyzeExpression)
+    {
+        if (IsVoidType(returnType))
+        {
+            if (statement.Expression is not null)
+            {
+                analyzeExpression(statement.Expression, statement.Location, variables, typeEnvironment, mutability);
+                diagnostics.Report(statement.Location, "Cannot return a value from function returning void.");
+            }
+
+            return;
+        }
+
+        AnalyzeReturnCore(
+            statement,
+            returnType,
+            () => analyzeExpression(statement.Expression!, statement.Location, variables, typeEnvironment, mutability),
+            () => assignmentAnalyzer.CheckAssignmentCompatibility(statement.Location, returnType, statement.Expression, typeEnvironment, "return value"));
+    }
+
+    private void AnalyzeReturnCore(
+        ReturnStatement statement,
+        TypeRef returnType,
+        Action analyzeExpression,
+        Action checkAssignmentCompatibility)
+    {
         if (statement.Expression is null)
         {
             diagnostics.Report(statement.Location, $"Function returning '{FormatTypeRef(returnType)}' must return a value.");
             return;
         }
 
-        analyzeExpression(statement.Expression, statement.Location, variables, mutability);
+        analyzeExpression();
         if (IsBareNull(statement.Expression) && !IsNullableType(returnType))
         {
             diagnostics.Report(statement.Location, $"Cannot return null from function returning non-pointer type '{FormatTypeRef(returnType)}'.");
         }
 
-        assignmentAnalyzer.CheckAssignmentCompatibility(statement.Location, returnType, statement.Expression, variables, "return value");
+        checkAssignmentCompatibility();
     }
 
     private static bool IsVoidType(TypeRef? type) =>

@@ -96,11 +96,23 @@ internal sealed class ExpressionSemanticAnalyzer(
                 Analyze(assignment.Value, location, variables, typeEnvironment, mutability);
                 if (variables is not null)
                 {
-                    assignmentAnalyzer?.AnalyzeAssignmentExpression(
-                        assignment,
-                        variables,
-                        mutability,
-                        analyzeExpression);
+                    if (typeEnvironment is null)
+                    {
+                        assignmentAnalyzer?.AnalyzeAssignmentExpression(
+                            assignment,
+                            variables,
+                            mutability,
+                            analyzeExpression);
+                    }
+                    else
+                    {
+                        assignmentAnalyzer?.AnalyzeAssignmentExpression(
+                            assignment,
+                            variables,
+                            typeEnvironment,
+                            mutability,
+                            analyzeExpression);
+                    }
                 }
 
                 break;

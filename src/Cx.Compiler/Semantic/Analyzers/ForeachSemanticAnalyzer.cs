@@ -19,10 +19,19 @@ internal sealed class ForeachSemanticAnalyzer(
     public ForeachAnalysisResult AnalyzeForeach(
         ForeachStatement foreachStatement,
         IReadOnlyDictionary<string, string> variables,
+        IReadOnlyDictionary<string, LocalMutability> mutability) =>
+        AnalyzeForeach(
+            foreachStatement,
+            TypeEnvironment.FromLegacyStrings(typeRefParser, variables),
+            mutability);
+
+    public ForeachAnalysisResult AnalyzeForeach(
+        ForeachStatement foreachStatement,
+        TypeEnvironment variables,
         IReadOnlyDictionary<string, LocalMutability> mutability)
     {
-        var foreachVariables = new Dictionary<string, string>(variables, StringComparer.Ordinal);
-        var foreachTypeEnvironment = TypeEnvironment.FromLegacyStrings(typeRefParser, variables);
+        var foreachTypeEnvironment = variables.Clone();
+        var foreachVariables = new Dictionary<string, string>(foreachTypeEnvironment.ToLegacyStrings(), StringComparer.Ordinal);
         var foreachMutability = new Dictionary<string, LocalMutability>(mutability, StringComparer.Ordinal);
         var iterableExpression = foreachStatement.IterableExpression.SourceText;
         if (foreachStatement.IterableExpression is ScalarRangeExpressionNode rangeExpression)
@@ -32,15 +41,16 @@ internal sealed class ForeachSemanticAnalyzer(
                 diagnostics.Report(foreachStatement.Location, "Key/value foreach is not supported for scalar ranges.");
             }
 
-            var rangeType = expressionTypeResolver.Resolve(rangeExpression, variables) ?? "int";
+            var rangeType = expressionTypeResolver.ResolveTypeRef(rangeExpression, variables)
+                ?? new TypeRef.Named("int", []);
             AddForeachScalarRangeBindings(
                 foreachStatement,
                 foreachVariables,
                 foreachTypeEnvironment,
                 foreachMutability,
-                typeRefParser.Parse(rangeType));
+                rangeType);
         }
-        else if (!TryResolveVariableType(iterableExpression, variables, out var iterableType))
+        else if (!TryResolveVariableType(iterableExpression, variables, out var iterableTypeRef))
         {
             diagnostics.Report(
                 foreachStatement.Location,
@@ -48,6 +58,7 @@ internal sealed class ForeachSemanticAnalyzer(
         }
         else if (foreachStatement.KeyBinding is not null)
         {
+            var iterableType = TypeRefFormatter.ToCxString(iterableTypeRef);
             if (TryResolveForeachTypes(
                 iterableType,
                 keyValue: true,
@@ -77,46 +88,50 @@ internal sealed class ForeachSemanticAnalyzer(
                     SatisfiesRequirement(iterableType, "Contiguous"));
             }
         }
-        else if (TryGetFixedArrayElementType(typeRefParser.Parse(iterableType), out var arrayElementType))
+        else if (TryGetFixedArrayElementType(iterableTypeRef, out var arrayElementType))
         {
             AddForeachValueBindings(foreachStatement, foreachVariables, foreachTypeEnvironment, foreachMutability, arrayElementType);
         }
-        else if (TryResolveForeachTypes(
-            iterableType,
-            keyValue: false,
-            out var iteratorElementType,
-            out _))
+        else
         {
-            AddForeachValueBindings(
-                foreachStatement,
-                foreachVariables,
-                foreachTypeEnvironment,
-                foreachMutability,
-                typeRefParser.Parse(iteratorElementType));
-        }
-        else if (SatisfiesRequirement(iterableType, "Contiguous") is { Success: true } contiguous
-            && contiguous.TypeBindings.TryGetValue("T", out var contiguousElementType))
-        {
-            AddForeachValueBindings(
-                foreachStatement,
-                foreachVariables,
-                foreachTypeEnvironment,
-                foreachMutability,
-                typeRefParser.Parse(contiguousElementType));
-        }
-        else if (SatisfiesRequirement(iterableType, "ContiguousRange") is { Success: true } range
-            && range.TypeBindings.TryGetValue("T", out var rangeElementType))
-        {
-            AddForeachValueBindings(
-                foreachStatement,
-                foreachVariables,
-                foreachTypeEnvironment,
-                foreachMutability,
-                typeRefParser.Parse(rangeElementType));
-        }
-        else if (SatisfiesRequirement(iterableType, "Contiguous") is { } match && !match.Success)
-        {
-            ReportForeachRequirementFailure(foreachStatement, iterableType, match);
+            var iterableType = TypeRefFormatter.ToCxString(iterableTypeRef);
+            if (TryResolveForeachTypes(
+                iterableType,
+                keyValue: false,
+                out var iteratorElementType,
+                out _))
+            {
+                AddForeachValueBindings(
+                    foreachStatement,
+                    foreachVariables,
+                    foreachTypeEnvironment,
+                    foreachMutability,
+                    typeRefParser.Parse(iteratorElementType));
+            }
+            else if (SatisfiesRequirement(iterableType, "Contiguous") is { Success: true } contiguous
+                && contiguous.TypeBindings.TryGetValue("T", out var contiguousElementType))
+            {
+                AddForeachValueBindings(
+                    foreachStatement,
+                    foreachVariables,
+                    foreachTypeEnvironment,
+                    foreachMutability,
+                    typeRefParser.Parse(contiguousElementType));
+            }
+            else if (SatisfiesRequirement(iterableType, "ContiguousRange") is { Success: true } range
+                && range.TypeBindings.TryGetValue("T", out var rangeElementType))
+            {
+                AddForeachValueBindings(
+                    foreachStatement,
+                    foreachVariables,
+                    foreachTypeEnvironment,
+                    foreachMutability,
+                    typeRefParser.Parse(rangeElementType));
+            }
+            else if (SatisfiesRequirement(iterableType, "Contiguous") is { } match && !match.Success)
+            {
+                ReportForeachRequirementFailure(foreachStatement, iterableType, match);
+            }
         }
 
         return new ForeachAnalysisResult(foreachVariables, foreachTypeEnvironment, foreachMutability);
@@ -253,10 +268,10 @@ internal sealed class ForeachSemanticAnalyzer(
 
     private static bool TryResolveVariableType(
         string expression,
-        IReadOnlyDictionary<string, string> variables,
-        out string type)
+        TypeEnvironment variables,
+        out TypeRef type)
     {
-        return variables.TryGetValue(expression.Trim(), out type!);
+        return variables.TryGet(expression.Trim(), out type!);
     }
 
     private TypeRef? TypeRefOrNull(TypeNode? typeNode)

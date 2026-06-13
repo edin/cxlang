@@ -78,7 +78,7 @@ public sealed class SemanticAnalyzer(
         {
             var globalType = TypeText(global.TypeNode);
             AnalyzeType(global.TypeNode, global.Location, program, []);
-            AnalyzeExpression(global.Initializer, global.Location, globalVariables);
+            AnalyzeExpression(global.Initializer, global.Location, globalVariables, globalTypeEnvironment, null);
             if (global.Initializer is not null && IsBareNull(global.Initializer) && !IsNullableType(ParseTypeRef(globalType)))
             {
                 diagnostics.Report(global.Location, $"Cannot assign null to non-pointer global '{global.Name}' of type '{globalType}'.");
@@ -88,7 +88,7 @@ public sealed class SemanticAnalyzer(
                 global.Location,
                 globalType,
                 global.Initializer,
-                globalVariables,
+                globalTypeEnvironment,
                 $"global '{global.Name}'");
         }
 
@@ -147,7 +147,7 @@ public sealed class SemanticAnalyzer(
             _foreachAnalyzer = CreateForeachAnalyzer();
             _expressionAnalyzer = CreateExpressionAnalyzer();
             definiteAssignment.AnalyzeFunction(function, globalVariables);
-            if (!IsVoidType(functionReturnType) && !returnFlow.StatementsAlwaysReturn(function.Body, variables))
+            if (!IsVoidType(functionReturnType) && !returnFlow.StatementsAlwaysReturn(function.Body, typeEnvironment))
             {
                 diagnostics.Report(
                     function.Location,
@@ -263,13 +263,13 @@ public sealed class SemanticAnalyzer(
                     diagnostics.Report(let.Location, $"Cannot assign null to non-pointer type '{letType}'.");
                 }
 
-                _assignmentAnalyzer?.CheckAssignmentCompatibility(let.Location, letType, let.Initializer, variables, $"local '{let.Name}'");
+                _assignmentAnalyzer?.CheckAssignmentCompatibility(let.Location, letType, let.Initializer, typeEnvironment, $"local '{let.Name}'");
                 SetVariableType(variables, typeEnvironment, let.Name, ParseTypeRef(letType));
                 mutability[let.Name] = let.IsConst ? LocalMutability.Const : LocalMutability.Mutable;
                 break;
 
             case ReturnStatement ret:
-                _returnAnalyzer?.AnalyzeReturn(ret, returnType, variables, mutability, AnalyzeExpression);
+                _returnAnalyzer?.AnalyzeReturn(ret, returnType, variables, typeEnvironment, mutability, AnalyzeExpression);
                 break;
 
             case CStatement c:
@@ -335,7 +335,7 @@ public sealed class SemanticAnalyzer(
 
             case ForeachStatement foreachStatement:
                 AnalyzeExpression(foreachStatement.IterableExpression, foreachStatement.Location, variables, typeEnvironment, mutability);
-                var foreachScope = _foreachAnalyzer?.AnalyzeForeach(foreachStatement, variables, mutability)
+                var foreachScope = _foreachAnalyzer?.AnalyzeForeach(foreachStatement, typeEnvironment, mutability)
                     ?? new ForeachAnalysisResult(
                         new Dictionary<string, string>(variables, StringComparer.Ordinal),
                         TypeEnvironment.FromLegacyStrings(_typeRefParser ?? new TypeRefParser(program), variables),
@@ -377,7 +377,7 @@ public sealed class SemanticAnalyzer(
 
             case MatchStatement matchStatement:
                 AnalyzeExpression(matchStatement.Expression, matchStatement.Location, variables, typeEnvironment, mutability);
-                foreach (var armBinding in _matchAnalyzer?.AnalyzeMatch(matchStatement, variables) ?? [])
+                foreach (var armBinding in _matchAnalyzer?.AnalyzeMatch(matchStatement, typeEnvironment) ?? [])
                 {
                     var arm = armBinding.Arm;
                     var armVariables = new Dictionary<string, string>(variables, StringComparer.Ordinal);
@@ -481,7 +481,7 @@ public sealed class SemanticAnalyzer(
                     declaration.Location,
                     declarationType,
                     declaration.Initializer,
-                    variables,
+                    typeEnvironment,
                     $"for variable '{declaration.Name}'");
                 SetVariableType(variables, typeEnvironment, declaration.Name, ParseTypeRef(declarationType));
                 mutability[declaration.Name] = declaration.IsConst ? LocalMutability.Const : LocalMutability.Mutable;

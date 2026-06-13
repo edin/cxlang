@@ -16,12 +16,25 @@ internal sealed class AssignmentSemanticAnalyzer(
         AssignmentExpressionNode assignment,
         IReadOnlyDictionary<string, string> variables,
         IReadOnlyDictionary<string, LocalMutability>? mutability,
+        Action<ExpressionNode, Location, IReadOnlyDictionary<string, string>, IReadOnlyDictionary<string, LocalMutability>?> analyzeExpression) =>
+        AnalyzeAssignmentExpression(
+            assignment,
+            variables,
+            TypeEnvironment.FromLegacyStrings(typeRefParser, variables),
+            mutability,
+            analyzeExpression);
+
+    public void AnalyzeAssignmentExpression(
+        AssignmentExpressionNode assignment,
+        IReadOnlyDictionary<string, string> variables,
+        TypeEnvironment typeEnvironment,
+        IReadOnlyDictionary<string, LocalMutability>? mutability,
         Action<ExpressionNode, Location, IReadOnlyDictionary<string, string>, IReadOnlyDictionary<string, LocalMutability>?> analyzeExpression)
     {
         analyzeExpression(assignment.Value, assignment.Location, variables, mutability);
         AnalyzeAssignmentMutability(assignment, mutability);
 
-        var targetTypeRef = expressionTypeResolver.ResolveTypeRef(assignment.Target, variables);
+        var targetTypeRef = expressionTypeResolver.ResolveTypeRef(assignment.Target, typeEnvironment);
         if (targetTypeRef is null)
         {
             return;
@@ -34,11 +47,11 @@ internal sealed class AssignmentSemanticAnalyzer(
                 diagnostics.Report(assignment.Location, $"Cannot assign null to non-pointer type '{FormatTypeRef(targetTypeRef)}'.");
             }
 
-            CheckAssignmentCompatibility(assignment.Location, targetTypeRef, assignment.Value, variables, "assignment");
+            CheckAssignmentCompatibility(assignment.Location, targetTypeRef, assignment.Value, typeEnvironment, "assignment");
             return;
         }
 
-        CheckCompoundAssignmentCompatibility(assignment.Location, targetTypeRef, assignment.Operator, assignment.Value, variables);
+        CheckCompoundAssignmentCompatibility(assignment.Location, targetTypeRef, assignment.Operator, assignment.Value, typeEnvironment);
     }
 
     public void AnalyzeMutationTarget(
@@ -78,13 +91,39 @@ internal sealed class AssignmentSemanticAnalyzer(
         ExpressionNode? sourceExpression,
         IReadOnlyDictionary<string, string> variables,
         string subject) =>
-        CheckAssignmentCompatibility(location, typeRefParser.Parse(targetType), sourceExpression, variables, subject);
+        CheckAssignmentCompatibility(
+            location,
+            typeRefParser.Parse(targetType),
+            sourceExpression,
+            TypeEnvironment.FromLegacyStrings(typeRefParser, variables),
+            subject);
 
     public void CheckAssignmentCompatibility(
         Location location,
         TypeRef? targetType,
         ExpressionNode? sourceExpression,
         IReadOnlyDictionary<string, string> variables,
+        string subject) =>
+        CheckAssignmentCompatibility(
+            location,
+            targetType,
+            sourceExpression,
+            TypeEnvironment.FromLegacyStrings(typeRefParser, variables),
+            subject);
+
+    public void CheckAssignmentCompatibility(
+        Location location,
+        string targetType,
+        ExpressionNode? sourceExpression,
+        TypeEnvironment typeEnvironment,
+        string subject) =>
+        CheckAssignmentCompatibility(location, typeRefParser.Parse(targetType), sourceExpression, typeEnvironment, subject);
+
+    public void CheckAssignmentCompatibility(
+        Location location,
+        TypeRef? targetType,
+        ExpressionNode? sourceExpression,
+        TypeEnvironment typeEnvironment,
         string subject)
     {
         if (targetType is null || sourceExpression is null)
@@ -97,7 +136,7 @@ internal sealed class AssignmentSemanticAnalyzer(
             return;
         }
 
-        var sourceType = expressionTypeResolver.ResolveTypeRef(sourceExpression, variables);
+        var sourceType = expressionTypeResolver.ResolveTypeRef(sourceExpression, typeEnvironment);
         if (IsTaggedUnionVariantAssignment(targetType, sourceType))
         {
             return;
@@ -131,9 +170,9 @@ internal sealed class AssignmentSemanticAnalyzer(
         TypeRef targetType,
         string assignmentOperator,
         ExpressionNode value,
-        IReadOnlyDictionary<string, string> variables)
+        TypeEnvironment typeEnvironment)
     {
-        var valueType = expressionTypeResolver.ResolveTypeRef(value, variables);
+        var valueType = expressionTypeResolver.ResolveTypeRef(value, typeEnvironment);
         if (valueType is null)
         {
             return;

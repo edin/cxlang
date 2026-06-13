@@ -14,7 +14,12 @@ internal sealed class MatchSemanticAnalyzer(
 {
     public IReadOnlyList<MatchArmBinding> AnalyzeMatch(
         MatchStatement matchStatement,
-        IReadOnlyDictionary<string, string> variables)
+        IReadOnlyDictionary<string, string> variables) =>
+        AnalyzeMatch(matchStatement, TypeEnvironment.FromLegacyStrings(typeRefParser, variables));
+
+    public IReadOnlyList<MatchArmBinding> AnalyzeMatch(
+        MatchStatement matchStatement,
+        TypeEnvironment variables)
     {
         var matchExpressionType = expressionTypeResolver.ResolveTypeRef(matchStatement.Expression, variables);
         TaggedUnionNode? matchedTaggedUnion = null;
@@ -133,7 +138,7 @@ internal sealed class MatchSemanticAnalyzer(
 
     private TaggedUnionNode? ResolveMatchedTaggedUnion(
         MatchStatement matchStatement,
-        IReadOnlyDictionary<string, string> variables)
+        TypeEnvironment variables)
     {
         var matchExpressionType = expressionTypeResolver.ResolveTypeRef(matchStatement.Expression, variables);
         var normalizedType = TypeRefFacts.GetBaseName(matchExpressionType);
@@ -148,7 +153,7 @@ internal sealed class MatchSemanticAnalyzer(
 
     private InterfaceNode? ResolveMatchedInterface(
         MatchStatement matchStatement,
-        IReadOnlyDictionary<string, string> variables)
+        TypeEnvironment variables)
     {
         var matchExpressionType = expressionTypeResolver.ResolveTypeRef(matchStatement.Expression, variables);
         var normalizedType = TypeRefFacts.GetBaseName(matchExpressionType);
