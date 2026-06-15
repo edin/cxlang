@@ -558,7 +558,7 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
         Scope scope,
         IReadOnlyList<string> typeArguments)
     {
-        var targetName = GetQualifiedName(member.Target);
+        var targetName = ExpressionNameFacts.GetQualifiedName(member.Target);
         if (targetName is not null
             && FindModuleFunction(targetName, member.MemberName, typeArguments) is { } moduleFunction)
         {
@@ -799,14 +799,6 @@ internal sealed class ScopeResolver(DiagnosticBag diagnostics, SemanticModel mod
         var type = TypeText(typeNode);
         return string.IsNullOrWhiteSpace(type) ? null : type;
     }
-
-    private static string? GetQualifiedName(ExpressionNode expression) => expression switch
-    {
-        NameExpressionNode name => name.SourceText,
-        ParenthesizedExpressionNode parenthesized => GetQualifiedName(parenthesized.Expression),
-        MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
-        _ => null,
-    };
 
     private static string Describe(SymbolKind kind) =>
         kind switch

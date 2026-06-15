@@ -10,6 +10,7 @@ public sealed partial class CEmitter
         CLoweringContext context,
         CLoweringScope scope,
         GenericCallResolver genericCallResolver,
+        CFunctionReferenceResolver functionReferences,
         ReceiverExpressionBuilder receiverExpressionBuilder,
         Func<ExpressionNode, CExpression> lowerExpression)
     {
@@ -72,21 +73,18 @@ public sealed partial class CEmitter
                 var genericCall = genericCallResolver.FindResolved(resolvedCall);
                 return genericCall is null
                     ? null
-                    : new CResolvedFunction(
-                        GetFunctionModule(genericCall.OwnerType ?? OwnerType(resolvedCall.Function), genericCall.Name),
+                    : functionReferences.Resolve(
+                        genericCall.OwnerType ?? OwnerType(resolvedCall.Function),
+                        genericCall.Name,
                         genericCall.CName);
             }
 
             var ownerType = OwnerType(resolvedCall.Function);
-            return new CResolvedFunction(
-                GetFunctionModule(ownerType, resolvedCall.Function.Name)
-                    ?? ownerType
-                    ?? resolvedCall.Function.Name,
+            return functionReferences.Resolve(
+                ownerType,
+                resolvedCall.Function.Name,
                 s_nameMangler.FunctionName(resolvedCall.Function));
         }
-
-        private static string GetFunctionModule(string? ownerType, string name) =>
-            ownerType is null ? name : ownerType;
 
         private bool TryGetReceiverPointerInfo(string name, out bool isPointer)
         {

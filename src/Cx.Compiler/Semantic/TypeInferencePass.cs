@@ -459,7 +459,7 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
             return BuildGenericCallDiagnostic(subject, name, function, function.Name, function.Name, call.Arguments, skipSelf: false);
         }
 
-        if (call.Callee is not MemberExpressionNode member || GetQualifiedName(member.Target) is not { } targetName)
+        if (call.Callee is not MemberExpressionNode member || ExpressionNameFacts.GetQualifiedName(member.Target) is not { } targetName)
         {
             return null;
         }
@@ -535,14 +535,6 @@ internal sealed class TypeInferencePass(DiagnosticBag diagnostics)
         expression is ParenthesizedExpressionNode parenthesized
             ? UnwrapParentheses(parenthesized.Expression)
             : expression;
-
-    private static string? GetQualifiedName(ExpressionNode expression) => expression switch
-    {
-        NameExpressionNode name => name.SourceText,
-        ParenthesizedExpressionNode parenthesized => GetQualifiedName(parenthesized.Expression),
-        MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
-        _ => null,
-    };
 
     private ExpressionNode? InferExpression(
         ExpressionNode? expression,

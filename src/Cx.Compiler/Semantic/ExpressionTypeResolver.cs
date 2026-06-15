@@ -442,7 +442,7 @@ internal sealed class ExpressionTypeResolver(
                 return ParseResolvedType(staticFunctionType);
             }
 
-            var qualifiedName = GetQualifiedName(member);
+            var qualifiedName = ExpressionNameFacts.GetQualifiedName(member);
             var global = program.GlobalVariables.FirstOrDefault(global =>
                 string.Equals(global.Name, qualifiedName, StringComparison.Ordinal));
             return ResolveTypeNode(global?.TypeNode);
@@ -491,7 +491,7 @@ internal sealed class ExpressionTypeResolver(
 
     private string? ResolveStaticFunctionReference(MemberExpressionNode member)
     {
-        var targetName = GetQualifiedName(member.Target);
+        var targetName = ExpressionNameFacts.GetQualifiedName(member.Target);
         if (targetName is null)
         {
             return null;
@@ -806,13 +806,5 @@ internal sealed class ExpressionTypeResolver(
 
     private static string? FormatTypeRef(TypeRef? type) =>
         type is null ? null : TypeRefFormatter.ToCxString(type);
-
-    private static string? GetQualifiedName(ExpressionNode expression) => expression switch
-    {
-        NameExpressionNode name => name.SourceText,
-        ParenthesizedExpressionNode parenthesized => GetQualifiedName(parenthesized.Expression),
-        MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
-        _ => null,
-    };
 
 }

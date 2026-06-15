@@ -11,6 +11,7 @@ public sealed partial class CEmitter
         CLoweringScope scope,
         GenericCallResolver genericCallResolver,
         ResolvedCallLowerer resolvedCallLowerer,
+        CFunctionReferenceResolver functionReferences,
         MemberCallLowerer memberCallLowerer,
         StructValueBuilder structValueBuilder,
         AdapterExposeResolver adapterExposeResolver,
@@ -32,7 +33,7 @@ public sealed partial class CEmitter
                 return memberCall;
             }
 
-            var calleeName = GetQualifiedName(call.Callee);
+            var calleeName = ExpressionNameFacts.GetQualifiedName(call.Callee);
             if (calleeName is null)
             {
                 return null;
@@ -59,7 +60,7 @@ public sealed partial class CEmitter
             if (freeMatch is not null)
             {
                 return new CCallExpression(
-                    new CResolvedFunction(GetFunctionModule(freeMatch.OwnerType, freeMatch.Name), freeMatch.CName),
+                    functionReferences.Resolve(freeMatch.OwnerType, freeMatch.Name, freeMatch.CName),
                     call.Arguments.Select(lowerExpression).ToList());
             }
 
@@ -79,19 +80,9 @@ public sealed partial class CEmitter
             return staticMatch is null
                 ? null
                 : new CCallExpression(
-                    new CResolvedFunction(GetFunctionModule(staticMatch.OwnerType, staticMatch.Name), staticMatch.CName),
+                    functionReferences.Resolve(staticMatch.OwnerType, staticMatch.Name, staticMatch.CName),
                     call.Arguments.Select(lowerExpression).ToList());
         }
-
-        private static string GetFunctionModule(string? ownerType, string name) =>
-            ownerType is null ? name : ownerType;
-
-        private static string? GetQualifiedName(ExpressionNode expression) => expression switch
-        {
-            NameExpressionNode name => name.SourceText,
-            MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
-            _ => null,
-        };
 
         private IReadOnlyList<string> TypeTexts(IReadOnlyList<TypeNode> typeNodes) =>
             typeNodes

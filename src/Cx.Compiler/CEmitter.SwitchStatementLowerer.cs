@@ -9,14 +9,14 @@ public sealed partial class CEmitter
         ImportedNameLowerer nameLowerer,
         CStatementLoweringPipeline statementLowerer)
     {
-        public CSwitchStatement LowerSwitch(SwitchStatement switchStatement, int rawIndentLevel) =>
+        public CSwitchStatement LowerSwitch(SwitchStatement switchStatement) =>
             new(
                 nameLowerer.LowerExpression(switchStatement.Expression),
                 switchStatement.Cases
                     .Select(switchCase => new CSwitchCase(
                         nameLowerer.Lower(switchCase.Pattern),
-                        statementLowerer.LowerBlock(switchCase.Body, rawIndentLevel + 2)))
+                        statementLowerer.LowerBlock(switchCase.Body)))
                     .ToList(),
-                statementLowerer.LowerBlock(switchStatement.DefaultBody, rawIndentLevel + 2));
+                statementLowerer.LowerBlock(switchStatement.DefaultBody));
     }
 }

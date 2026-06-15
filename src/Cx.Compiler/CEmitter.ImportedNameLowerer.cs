@@ -77,15 +77,15 @@ public sealed partial class CEmitter
             _interfaceValueBuilder = new InterfaceValueBuilder(
                 _context,
                 _scope,
+                s_abiNames,
                 type => LowerType(type, SelfType),
-                type => CTypeLowerer.LowerType(type, s_typeAdapters, GenericTypeSubstitutionBuilder.ParseType(SelfType)));
+                LowerTypeRef);
             _taggedUnionValueBuilder = new TaggedUnionValueBuilder(
                 _context,
                 InferExpressionType,
                 InferExpressionTypeRef,
                 type => LowerType(type, SelfType),
-                type => CTypeLowerer.LowerType(type, s_typeAdapters, GenericTypeSubstitutionBuilder.ParseType(SelfType)),
-                () => GenericTypeSubstitutionBuilder.ParseType(SelfType));
+                LowerTypeRef);
             _structValueBuilder = new StructValueBuilder(
                 _context,
                 LowerExpression,
@@ -117,10 +117,12 @@ public sealed partial class CEmitter
                 _context,
                 ResolveExpressionType,
                 LowerExpression);
+            var functionReferences = new CFunctionReferenceResolver();
             var resolvedCallLowerer = new ResolvedCallLowerer(
                 _context,
                 _scope,
                 _genericCallResolver,
+                functionReferences,
                 _receiverExpressionBuilder,
                 LowerExpression);
             var memberAccessLowerer = new MemberAccessLowerer(
@@ -133,6 +135,7 @@ public sealed partial class CEmitter
                 _scope,
                 _genericCallResolver,
                 resolvedCallLowerer,
+                functionReferences,
                 interfaceMemberCallLowerer,
                 _adapterExposeResolver,
                 _receiverExpressionBuilder,
@@ -143,6 +146,7 @@ public sealed partial class CEmitter
                 _scope,
                 _genericCallResolver,
                 resolvedCallLowerer,
+                functionReferences,
                 memberCallLowerer,
                 _structValueBuilder,
                 _adapterExposeResolver,
@@ -153,6 +157,7 @@ public sealed partial class CEmitter
                 _context,
                 _genericCallResolver,
                 resolvedCallLowerer,
+                functionReferences,
                 memberCallLowerer,
                 _structValueBuilder,
                 _taggedUnionValueBuilder,
@@ -371,11 +376,11 @@ public sealed partial class CEmitter
             _nameExpressionLowerer.LowerAddressOfExpression(operand);
 
         string ICExpressionLoweringContext.LowerType(TypeRef type) =>
-            CTypeLowerer.LowerType(type, s_typeAdapters, GenericTypeSubstitutionBuilder.ParseType(SelfType));
+            LowerTypeRef(type);
 
         string ICExpressionLoweringContext.LowerType(TypeNode? typeNode) =>
             _scope.ResolveType(typeNode) is { } type
-                ? CTypeLowerer.LowerType(type, s_typeAdapters, GenericTypeSubstitutionBuilder.ParseType(SelfType))
+                ? LowerTypeRef(type)
                 : string.Empty;
 
         string ICExpressionLoweringContext.LowerType(TypeNode? typeNode, string fallbackType) =>
@@ -383,8 +388,11 @@ public sealed partial class CEmitter
 
         private string LowerType(TypeNode? typeNode) =>
             _scope.ResolveType(typeNode) is { } type
-                ? CTypeLowerer.LowerType(type, s_typeAdapters, GenericTypeSubstitutionBuilder.ParseType(SelfType))
+                ? LowerTypeRef(type)
                 : string.Empty;
+
+        private string LowerTypeRef(TypeRef type) =>
+            s_abiNames.LowerType(type, GenericTypeSubstitutionBuilder.ParseType(SelfType));
 
         private static string LowerType(string type, string? selfType = null) =>
             CEmitter.LowerType(type, selfType);
@@ -434,13 +442,6 @@ public sealed partial class CEmitter
             return type.TrimEnd();
         }
 
-        private static string? GetQualifiedName(ExpressionNode expression) => expression switch
-        {
-            NameExpressionNode name => name.SourceText,
-            MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
-            _ => null,
-        };
-
         private CExpression LowerMemberExpression(MemberExpressionNode member) =>
             _memberAccessLowerer.LowerExpression(member);
 
@@ -451,9 +452,6 @@ public sealed partial class CEmitter
             string target,
             bool isPointer) =>
             _memberCallLowerer.TryLowerAdapterExposeCall(adapterExpose, receiverArguments, arguments, target, isPointer);
-
-        private static string GetFunctionModule(string? ownerType, string name) =>
-            ownerType is null ? name : ownerType;
 
         private bool IsModuleQualifierTarget(string target) =>
             _context.IsModuleQualifierTarget(target);

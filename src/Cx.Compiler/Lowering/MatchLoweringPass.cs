@@ -11,10 +11,10 @@ internal static class MatchLoweringPass
     public static ProgramNode Lower(ProgramNode program, DiagnosticBag diagnostics) =>
         AstTransformPipeline
             .Create()
-            .Transform(new MatchTransform(program))
+            .Transform(new MatchTransform(program, new CAbiNameService(program.TypeAdapters)))
             .Run(program);
 
-    private sealed class MatchTransform(ProgramNode program) : IAstNodeTransform<MatchStatement>
+    private sealed class MatchTransform(ProgramNode program, CAbiNameService abiNames) : IAstNodeTransform<MatchStatement>
     {
         private readonly TypeRefParser _typeRefParser = new(program);
 
@@ -100,7 +100,7 @@ internal static class MatchLoweringPass
 
                 cases.Add(new SwitchCaseNode(
                     arm.Location,
-                    Name(arm.Location, GetTypeIdName(arm.Pattern)),
+                    Name(arm.Location, abiNames.TypeIdName(arm.Pattern)),
                     body));
             }
 
@@ -217,8 +217,5 @@ internal static class MatchLoweringPass
                 $"{target.SourceText}.{memberName}",
                 target,
                 memberName);
-
-        private static string GetTypeIdName(string typeName) =>
-            "CX_TYPE_" + CTypeLowerer.SanitizeTypeName(CTypeLowerer.LowerType(typeName, [], selfType: null));
     }
 }

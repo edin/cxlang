@@ -15,7 +15,7 @@ internal sealed class MethodCallResolver(ProgramNode program, TypeSystem typeSys
         int argumentCount,
         IReadOnlyDictionary<string, string> variables)
     {
-        var targetName = GetQualifiedName(member.Target);
+        var targetName = ExpressionNameFacts.GetQualifiedName(member.Target);
         if (targetName is null)
         {
             return null;
@@ -66,11 +66,4 @@ internal sealed class MethodCallResolver(ProgramNode program, TypeSystem typeSys
         return TypeRefFacts.StripPointersAndAliases(parsed);
     }
 
-    private static string? GetQualifiedName(ExpressionNode expression) => expression switch
-    {
-        NameExpressionNode name => name.SourceText,
-        ParenthesizedExpressionNode parenthesized => GetQualifiedName(parenthesized.Expression),
-        MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
-        _ => null,
-    };
 }

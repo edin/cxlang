@@ -19,19 +19,19 @@ public sealed partial class CEmitter
                 return functionReference;
             }
 
-            var qualifiedMember = $"{GetQualifiedName(member.Target)}.{member.MemberName}";
+            var qualifiedMember = $"{ExpressionNameFacts.GetQualifiedName(member.Target)}.{member.MemberName}";
             if (context.TryGetEnumMemberAlias(qualifiedMember, out var enumMemberName))
             {
                 return enumMemberName;
             }
 
-            var staticMethodKey = $"{GetQualifiedName(member.Target)}.{member.MemberName}";
+            var staticMethodKey = $"{ExpressionNameFacts.GetQualifiedName(member.Target)}.{member.MemberName}";
             if (context.TryGetMethod(staticMethodKey, out var staticMethod))
             {
                 return staticMethod.CName;
             }
 
-            if (GetQualifiedName(member.Target) is { } moduleTarget
+            if (ExpressionNameFacts.GetQualifiedName(member.Target) is { } moduleTarget
                 && context.IsModuleQualifierTarget(moduleTarget))
             {
                 return member.MemberName;
@@ -65,19 +65,19 @@ public sealed partial class CEmitter
                 return new CNameExpression(functionReference);
             }
 
-            var qualifiedMember = $"{GetQualifiedName(member.Target)}.{member.MemberName}";
+            var qualifiedMember = $"{ExpressionNameFacts.GetQualifiedName(member.Target)}.{member.MemberName}";
             if (context.TryGetEnumMemberAlias(qualifiedMember, out var enumMemberName))
             {
                 return new CNameExpression(enumMemberName);
             }
 
-            var staticMethodKey = $"{GetQualifiedName(member.Target)}.{member.MemberName}";
+            var staticMethodKey = $"{ExpressionNameFacts.GetQualifiedName(member.Target)}.{member.MemberName}";
             if (context.TryGetMethod(staticMethodKey, out var staticMethod))
             {
                 return new CNameExpression(staticMethod.CName);
             }
 
-            if (GetQualifiedName(member.Target) is { } moduleTarget
+            if (ExpressionNameFacts.GetQualifiedName(member.Target) is { } moduleTarget
                 && context.IsModuleQualifierTarget(moduleTarget))
             {
                 return new CNameExpression(member.MemberName);
@@ -218,11 +218,5 @@ public sealed partial class CEmitter
                 ? s_nameMangler.SymbolName(symbol)
                 : null;
 
-        private static string? GetQualifiedName(ExpressionNode expression) => expression switch
-        {
-            NameExpressionNode name => name.SourceText,
-            MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
-            _ => null,
-        };
     }
 }

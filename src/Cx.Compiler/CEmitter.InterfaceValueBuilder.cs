@@ -8,6 +8,7 @@ public sealed partial class CEmitter
     private sealed class InterfaceValueBuilder(
         CLoweringContext context,
         CLoweringScope scope,
+        CAbiNameService abiNames,
         Func<string, string> lowerCxType,
         Func<TypeRef, string> lowerTypeRef)
     {
@@ -57,7 +58,7 @@ public sealed partial class CEmitter
                     new CInitializerField("state", state),
                     new CInitializerField(
                         "vtable",
-                        new CUnaryExpression("&", new CNameExpression(GetInterfaceVTableInstanceName(normalizedSourceType, interfaceName)))),
+                        new CUnaryExpression("&", new CNameExpression(abiNames.InterfaceVTableInstanceName(normalizedSourceType, interfaceName)))),
                 ],
                 []);
         }

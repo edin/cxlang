@@ -49,7 +49,7 @@ public sealed partial class CEmitter
 
         private string? ResolveGenericCallType(GenericCallExpressionNode call)
         {
-            var calleeName = GetQualifiedName(call.Callee);
+            var calleeName = ExpressionNameFacts.GetQualifiedName(call.Callee);
             var typeArguments = TypeTexts(call.TypeArgumentNodes);
             if (calleeName is not null)
             {
@@ -70,7 +70,7 @@ public sealed partial class CEmitter
             {
                 var targetType = Resolve(member.Target);
                 var owner = targetType is null
-                    ? GetQualifiedName(member.Target)
+                    ? ExpressionNameFacts.GetQualifiedName(member.Target)
                     : GetGenericBaseName(RemovePointer(NormalizeType(targetType)));
                 var match = genericCallResolver.FindExact(owner, member.MemberName, typeArguments);
                 return match?.ReturnType;
@@ -172,13 +172,6 @@ public sealed partial class CEmitter
 
             return null;
         }
-
-        private static string? GetQualifiedName(ExpressionNode expression) => expression switch
-        {
-            NameExpressionNode name => name.SourceText,
-            MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
-            _ => null,
-        };
 
         private string? TypeText(TypeNode? typeNode)
         {

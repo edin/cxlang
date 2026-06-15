@@ -294,7 +294,7 @@ internal sealed class ModuleVisibilityAnalyzer(
 
                 break;
             case MemberExpressionNode member:
-                if (GetQualifiedName(member) is not { } qualifiedName
+                if (ExpressionNameFacts.GetQualifiedName(member) is not { } qualifiedName
                     || !visibility.IsVisibleFunction(qualifiedName)
                     && !visibility.IsVisibleValue(qualifiedName)
                     && !visibility.IsVisibleType(qualifiedName))
@@ -316,7 +316,7 @@ internal sealed class ModuleVisibilityAnalyzer(
         ModuleVisibility visibility,
         IReadOnlySet<string> locals)
     {
-        if (GetQualifiedName(callee) is not { } name || locals.Contains(name))
+        if (ExpressionNameFacts.GetQualifiedName(callee) is not { } name || locals.Contains(name))
         {
             AnalyzeExpression(callee, visibility, locals);
             return;
@@ -453,14 +453,6 @@ internal sealed class ModuleVisibilityAnalyzer(
 
         yield return foreachStatement.ValueBinding.Name;
     }
-
-    private static string? GetQualifiedName(ExpressionNode expression) => expression switch
-    {
-        NameExpressionNode name => name.SourceText,
-        ParenthesizedExpressionNode parenthesized => GetQualifiedName(parenthesized.Expression),
-        MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
-        _ => null,
-    };
 
     private static IReadOnlyList<string> FindTypeNames(string type)
     {

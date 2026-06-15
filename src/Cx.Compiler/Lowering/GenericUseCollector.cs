@@ -322,7 +322,7 @@ internal sealed class GenericUseCollector(ProgramNode program)
             yield break;
         }
 
-        var targetName = GetQualifiedName(member.Target);
+        var targetName = ExpressionNameFacts.GetQualifiedName(member.Target);
         if (targetName is null)
         {
             yield break;
@@ -389,7 +389,7 @@ internal sealed class GenericUseCollector(ProgramNode program)
             yield break;
         }
 
-        var targetName = GetQualifiedName(member.Target);
+        var targetName = ExpressionNameFacts.GetQualifiedName(member.Target);
         if (targetName is null)
         {
             yield break;
@@ -905,14 +905,6 @@ internal sealed class GenericUseCollector(ProgramNode program)
         var type = typeNode.ToTypeRef(_typeRefParser);
         return type is TypeRef.Unknown ? string.Empty : TypeRefFormatter.ToCxString(type);
     }
-
-    private static string? GetQualifiedName(ExpressionNode expression) => expression switch
-    {
-        NameExpressionNode name => name.SourceText,
-        ParenthesizedExpressionNode parenthesized => GetQualifiedName(parenthesized.Expression),
-        MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
-        _ => null,
-    };
 
 }
 

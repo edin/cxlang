@@ -9,6 +9,7 @@ public sealed partial class CEmitter
         CLoweringContext context,
         GenericCallResolver genericCallResolver,
         ResolvedCallLowerer resolvedCallLowerer,
+        CFunctionReferenceResolver functionReferences,
         MemberCallLowerer memberCallLowerer,
         StructValueBuilder structValueBuilder,
         TaggedUnionValueBuilder taggedUnionValueBuilder,
@@ -48,7 +49,7 @@ public sealed partial class CEmitter
                 if (genericCall is not null)
                 {
                     return new CCallExpression(
-                        new CResolvedFunction(GetFunctionModule(genericCall.OwnerType, genericCall.Name), genericCall.CName),
+                        functionReferences.Resolve(genericCall.OwnerType, genericCall.Name, genericCall.CName),
                         call.Arguments.Select(lowerExpression).ToList());
                 }
 
@@ -64,7 +65,7 @@ public sealed partial class CEmitter
             MemberExpressionNode member,
             IReadOnlyList<ExpressionNode> arguments)
         {
-            if (GetQualifiedName(member.Target) is not { } targetName)
+            if (ExpressionNameFacts.GetQualifiedName(member.Target) is not { } targetName)
             {
                 return null;
             }
@@ -81,14 +82,5 @@ public sealed partial class CEmitter
             IReadOnlyList<ExpressionNode> arguments) =>
             structValueBuilder.BuildPayloadExpression(payloadType, arguments);
 
-        private static string GetFunctionModule(string? ownerType, string name) =>
-            ownerType is null ? name : ownerType;
-
-        private static string? GetQualifiedName(ExpressionNode expression) => expression switch
-        {
-            NameExpressionNode name => name.SourceText,
-            MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
-            _ => null,
-        };
     }
 }

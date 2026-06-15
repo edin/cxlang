@@ -11,8 +11,7 @@ public sealed partial class CEmitter
         Func<string, string?> inferExpressionType,
         Func<string, TypeRef?> inferExpressionTypeRef,
         Func<string, string> lowerCxType,
-        Func<TypeRef, string> lowerTypeRef,
-        Func<TypeRef?> selfTypeProvider)
+        Func<TypeRef, string> lowerTypeRef)
     {
         public CExpression? TryWrapExpression(
             string targetType,
@@ -116,7 +115,7 @@ public sealed partial class CEmitter
         private bool AreSameLoweredType(TypeNode? leftTypeNode, TypeRef rightType)
         {
             var loweredLeft = leftTypeNode?.Semantic.Type is { } leftType
-                ? CTypeLowerer.LowerType(leftType, s_typeAdapters, selfTypeProvider())
+                ? lowerTypeRef(leftType)
                 : lowerCxType(leftTypeNode.ToTypeName());
             var loweredRight = lowerTypeRef(rightType);
             return string.Equals(loweredLeft, loweredRight, StringComparison.Ordinal);

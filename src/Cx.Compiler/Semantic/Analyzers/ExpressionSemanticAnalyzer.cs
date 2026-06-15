@@ -295,7 +295,7 @@ internal sealed class ExpressionSemanticAnalyzer(
             return;
         }
 
-        if (GetQualifiedName(callee) is { } name)
+        if (ExpressionNameFacts.GetQualifiedName(callee) is { } name)
         {
             if (IsKnownConstructorOrVariantCall(name))
             {
@@ -354,14 +354,6 @@ internal sealed class ExpressionSemanticAnalyzer(
 
     private static bool IsAnyType(TypeRef? type) =>
         TypeRefFacts.IsNamed(type, "any");
-
-    private static string? GetQualifiedName(ExpressionNode expression) => expression switch
-    {
-        NameExpressionNode name => name.SourceText,
-        ParenthesizedExpressionNode parenthesized => GetQualifiedName(parenthesized.Expression),
-        MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
-        _ => null,
-    };
 
     private IReadOnlyList<string> TypeArguments(IReadOnlyList<TypeNode> nodes) =>
         nodes.Select(typeText).ToList();

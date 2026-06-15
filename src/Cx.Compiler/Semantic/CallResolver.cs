@@ -46,7 +46,7 @@ internal sealed class CallResolver(
             return ResolveMemberCall(member, typeArguments, arguments, variables);
         }
 
-        var name = GetQualifiedName(callee);
+        var name = ExpressionNameFacts.GetQualifiedName(callee);
         if (name is not null && !variables.Types.ContainsKey(name))
         {
             if (ResolveFunction(name, typeArguments, arguments, variables) is { } directFunctionResolution)
@@ -90,7 +90,7 @@ internal sealed class CallResolver(
         TypeEnvironment variables)
     {
         var legacyVariables = variables.ToLegacyStrings();
-        var targetName = GetQualifiedName(member.Target);
+        var targetName = ExpressionNameFacts.GetQualifiedName(member.Target);
         if (targetName is null)
         {
             return null;
@@ -671,14 +671,6 @@ internal sealed class CallResolver(
 
         return TypeRefFacts.SameType(existing, typeArgument);
     }
-
-    private static string? GetQualifiedName(ExpressionNode expression) => expression switch
-    {
-        NameExpressionNode name => name.SourceText,
-        ParenthesizedExpressionNode parenthesized => GetQualifiedName(parenthesized.Expression),
-        MemberExpressionNode member when GetQualifiedName(member.Target) is { } target => $"{target}.{member.MemberName}",
-        _ => null,
-    };
 
     private string? OwnerType(FunctionNode function) => TypeTextOrNull(function.OwnerTypeNode);
 

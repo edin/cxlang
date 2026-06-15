@@ -11,6 +11,7 @@ public sealed partial class CEmitter
         CLoweringScope scope,
         GenericCallResolver genericCallResolver,
         ResolvedCallLowerer resolvedCallLowerer,
+        CFunctionReferenceResolver functionReferences,
         InterfaceMemberCallLowerer interfaceMemberCallLowerer,
         AdapterExposeResolver adapterExposeResolver,
         ReceiverExpressionBuilder receiverExpressionBuilder,
@@ -83,7 +84,7 @@ public sealed partial class CEmitter
                 targetType.IsPointer,
                 genericCall.TakesPointerSelf));
             return new CCallExpression(
-                new CResolvedFunction(GetFunctionModule(genericCall.OwnerType, genericCall.Name), genericCall.CName),
+                functionReferences.Resolve(genericCall.OwnerType, genericCall.Name, genericCall.CName),
                 loweredArguments);
         }
 
@@ -120,7 +121,7 @@ public sealed partial class CEmitter
                 var loweredArguments = arguments.Select(lowerExpression).ToList();
                 loweredArguments.Insert(0, receiverExpressionBuilder.Build(target, isPointer, takesPointerSelf: true));
                 return new CCallExpression(
-                    new CResolvedFunction(GetFunctionModule(genericBaseCall.OwnerType, genericBaseCall.Name), genericBaseCall.CName),
+                    functionReferences.Resolve(genericBaseCall.OwnerType, genericBaseCall.Name, genericBaseCall.CName),
                     loweredArguments);
             }
 
@@ -130,7 +131,7 @@ public sealed partial class CEmitter
                 var loweredArguments = arguments.Select(lowerExpression).ToList();
                 loweredArguments.Insert(0, receiverExpressionBuilder.Build(target, isPointer, takesPointerSelf: true));
                 return new CCallExpression(
-                    new CResolvedFunction(GetFunctionModule(baseOwner, resolvedExpose.SourceName) ?? baseOwner, baseMethod.CName),
+                    functionReferences.Resolve(baseOwner, resolvedExpose.SourceName, baseMethod.CName),
                     loweredArguments);
             }
 
@@ -146,7 +147,7 @@ public sealed partial class CEmitter
             if (staticGenericCall is not null)
             {
                 return new CCallExpression(
-                    new CResolvedFunction(GetFunctionModule(staticGenericCall.OwnerType, staticGenericCall.Name), staticGenericCall.CName),
+                    functionReferences.Resolve(staticGenericCall.OwnerType, staticGenericCall.Name, staticGenericCall.CName),
                     arguments.Select(lowerExpression).ToList());
             }
 
@@ -154,7 +155,7 @@ public sealed partial class CEmitter
             if (context.TryGetMethod(staticMethodKey, out var staticMethod))
             {
                 return new CCallExpression(
-                    new CResolvedFunction(target, staticMethod.CName),
+                    functionReferences.Resolve(target, staticMethod.CName),
                     arguments.Select(lowerExpression).ToList());
             }
 
@@ -199,7 +200,7 @@ public sealed partial class CEmitter
                 var loweredArguments = arguments.Select(lowerExpression).ToList();
                 loweredArguments.Insert(0, receiverExpressionBuilder.Build(target, isPointer, genericMemberCall.TakesPointerSelf));
                 return new CCallExpression(
-                    new CResolvedFunction(GetFunctionModule(genericMemberCall.OwnerType, genericMemberCall.Name), genericMemberCall.CName),
+                    functionReferences.Resolve(genericMemberCall.OwnerType, genericMemberCall.Name, genericMemberCall.CName),
                     loweredArguments);
             }
 
@@ -213,7 +214,7 @@ public sealed partial class CEmitter
                 var loweredArguments = arguments.Select(lowerExpression).ToList();
                 loweredArguments.Insert(0, receiverExpressionBuilder.Build(target, isPointer, methodInfo.TakesPointerSelf));
                 return new CCallExpression(
-                    new CResolvedFunction(normalizedType, methodInfo.CName),
+                    functionReferences.Resolve(normalizedType, methodInfo.CName),
                     loweredArguments);
             }
 
@@ -253,7 +254,7 @@ public sealed partial class CEmitter
                 var loweredArguments = arguments.Select(lowerExpression).ToList();
                 loweredArguments.Insert(0, ReceiverExpressionBuilder.Build(targetExpression, isPointer, genericMemberCall.TakesPointerSelf));
                 return new CCallExpression(
-                    new CResolvedFunction(GetFunctionModule(genericMemberCall.OwnerType, genericMemberCall.Name), genericMemberCall.CName),
+                    functionReferences.Resolve(genericMemberCall.OwnerType, genericMemberCall.Name, genericMemberCall.CName),
                     loweredArguments);
             }
 
@@ -268,15 +269,12 @@ public sealed partial class CEmitter
                 var loweredArguments = arguments.Select(lowerExpression).ToList();
                 loweredArguments.Insert(0, ReceiverExpressionBuilder.Build(targetExpression, isPointer, methodInfo.TakesPointerSelf));
                 return new CCallExpression(
-                    new CResolvedFunction(receiverType, methodInfo.CName),
+                    functionReferences.Resolve(receiverType, methodInfo.CName),
                     loweredArguments);
             }
 
             return null;
         }
-
-        private static string GetFunctionModule(string? ownerType, string name) =>
-            ownerType is null ? name : ownerType;
 
         private bool TryGetReceiverType(string name, out ReceiverTypeInfo typeInfo)
         {
